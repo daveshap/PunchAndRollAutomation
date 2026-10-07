@@ -1,0 +1,30 @@
+# A book project for `punchroll batch book.toml`.
+# Paths are relative to this file. Chapters run in order. Chapters that are already
+# edited are skipped until their recordings, script section, or settings change, and
+# transcripts are cached, so re-running after pickups only transcribes the new files.
+
+script = "narration.md"     # the narration script (Markdown, text, or .docx)
+out = "edited"              # where the edited chapters and reports go
+# config = "settings.toml"  # optional overrides, see settings.toml
+# mp3 = true                # also write the ACX MP3 (default)
+
+[[chapter]]
+name = "00-opening-credits"
+audio = ["raw/00-credits.wav"]
+from = "Opening Credits"
+to = "Foreword"
+
+[[chapter]]
+name = "01-the-rise-of-automation"
+# Recordings in the order made. Wildcards match in natural order (ch01-2 before ch01-10),
+# and a file named again later moves there, so the pickups land last.
+audio = ["raw/ch01-*.wav", "raw/ch01-pickups.wav"]
+from = "Chapter 1"
+to = "Chapter 2"
+
+[[chapter]]
+name = "02-the-decline-of-labor"
+audio = ["raw/ch02-*.wav"]
+from = "Chapter 2"
+to = "Chapter 3"
+# lines = "301-604"        # or select by line numbers in a Markdown script

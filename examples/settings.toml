@@ -1,0 +1,40 @@
+# Every setting punchroll uses, with its default. Copy, change what you need,
+# and pass with --config settings.toml (or `config = ...` in a project file).
+
+threads = 0            # speech recognition threads; 0 picks automatically
+level_match = true     # match later recordings' speech level to the first file
+
+[pauses]               # seconds; [min, max] keeps a natural pause in range, a third value is the rebuilt length
+head = 1.5             # room tone before the first word (ACX: 1 to 5 s)
+tail = 3.0             # room tone after the last word (ACX: 1 to 5 s)
+sentence = [0.30, 1.10]
+paragraph = [0.80, 1.70, 1.20]
+after_title = [0.80, 1.50, 1.00]          # after "Chapter One." / "Part Two."
+heading_to_body = [1.50, 2.50, 2.00]
+heading_to_heading = [1.00, 2.00, 1.50]
+before_heading = [1.80, 3.00, 2.20]
+cut_sentence = [0.55, 0.90]               # rebuilt pause between sentences where a take was cut
+cut_within = [0.12, 0.45]                 # rebuilt pause inside a sentence where a take was cut
+tolerance_short = 0.08                    # leave a pause alone this close to the minimum
+tolerance_long = 0.15                     # ... or this close to the maximum
+
+[master]
+rms_db = -20.0               # ACX: -23 to -18 dB RMS
+limiter_ceiling_db = -3.6    # sample peak ceiling; true peak lands under -3 dB
+highpass_hz = 70.0
+compressor_threshold_db = -26.0
+compressor_ratio = 2.0
+denoise_above_db = -62.0     # gentle noise reduction only if the floor is above this
+mp3_kbps = 192               # ACX: 192 kbps or more, constant bit rate
+mp3_sample_rate = 44100      # ACX: 44.1 kHz
+
+[align]                # costs in tenths; see docs/how-it-works.md before changing these
+restart = 9
+skip = 40
+insert = 10
+insert_filler = 4
+insert_edge = 6
+delete = 10
+substitute = 11
+near = 3
+max_cells = 400000000
