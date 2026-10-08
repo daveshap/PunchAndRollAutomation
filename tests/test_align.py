@@ -42,6 +42,30 @@ def test_stray_word_before_a_restart_is_cut():
     assert kept_words(read, lines) == "the office workers of the nineteen eighties saw computers arrive"
 
 
+def test_word_the_later_take_left_out_is_not_patched_in_from_the_earlier_one():
+    lines = ["a radiologist and a truck driver occupy different rungs", "both are exposed"]
+    read = ("a radiologist and a truck driver occupy indire "
+            "a radiologist and truck driver occupy different rungs both are exposed")
+    idx, hyp, _ = kept(read, lines)
+    assert " ".join(hyp[i] for i in idx) == "a radiologist and truck driver occupy different rungs both are exposed"
+    assert idx[0] == 8                                    # nothing of the first take is left
+
+    # the same for a phrase
+    first = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen"
+    lines = [first, "red green blue"]
+    idx, hyp, _ = kept(first + " one two three four five eleven twelve thirteen fourteen fifteen red green blue", lines)
+    assert " ".join(hyp[i] for i in idx) == "one two three four five eleven twelve thirteen fourteen fifteen red green blue"
+    assert idx[0] == 15
+
+    # and for the last word of a line, when the take reads on into the next line
+    assert kept_words(first + " eleven twelve thirteen fourteen red green blue", lines) == (
+        "one two three four five six seven eight nine ten eleven twelve thirteen fourteen red green blue")
+
+    # but a take that stops partway and moves on replaces only what it re-read
+    assert kept_words(first + " one two three four five red green blue", lines) == (
+        "six seven eight nine ten eleven twelve thirteen fourteen fifteen one two three four five red green blue")
+
+
 def test_pickup_recorded_later_replaces_the_flawed_line():
     lines = ["first line here", "second line is tricky", "third line ends it"]
     read = "first line here second lime is tracky third line ends it second line is tricky"

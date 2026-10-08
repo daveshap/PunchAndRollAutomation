@@ -11,7 +11,7 @@ What running it on real recordings has turned up, and what changed in the code b
 ## What it does
 
 1. **Transcribes** each recording with word timings, offline, using NVIDIA Parakeet TDT 0.6B v2 through sherpa-onnx. Sound at the voice's level that the voice detector skips (a clipped sentence start, a muttered aside) is transcribed too, so it can't sit unheard in a pause.
-2. **Aligns** the transcript to your narration script. Restarts, skipped text, fillers ("um", "sorry"), and asides are explicit moves in the alignment, so a repeated phrase, a retaken sentence, and a re-read paragraph are all recognized the same way. For every word of the script, the last reading wins. A word or two you add at the edge of a line is kept when it runs straight on from the line.
+2. **Aligns** the transcript to your narration script. Restarts, skipped text, fillers ("um", "sorry"), and asides are explicit moves in the alignment, so a repeated phrase, a retaken sentence, and a re-read paragraph are all recognized the same way. For every word of the script, the last reading wins. A word your retake leaves out stays out, so nothing from the abandoned take is set into the middle of it. A word or two you add at the edge of a line is kept when it runs straight on from the line.
 3. **Comps** where it helps: if the last take of a line has a slip that an earlier take read correctly, the two are spliced at a natural pause. If you reword lines on purpose as you read, `--no-comps` keeps your last take of every line whole.
 4. **Rebuilds the pauses.** Your own pauses and breaths are kept wherever nothing was cut and the pause is in range. Where a take was cut, or a pause is too long or too short, the gap is rebuilt from your room's own tone. Every join gets a short crossfade.
 5. **Masters to ACX**: −20 dB RMS, peaks below −3 dB, noise floor below −60 dB, 1.5 s of room tone at the head and 3 s at the tail. Writes a 24-bit WAV and a 44.1 kHz mono 192 kbps constant-bit-rate MP3.
@@ -121,6 +121,7 @@ Nothing in the pipeline calls an AI service. If you'd like Claude to run it for 
 
 - The recognizer sometimes mishears names, numbers, and short words, so pickups are places to listen, not verdicts. It formats numbers by context: "$450" has come back as "$450,000" right after a larger figure was read.
 - A sound at the voice's level with no recognizable words in it (a cough, a throat-clear) that falls between two kept sentences stays in the edit, and no report lists it. Between a cut take and its re-read it is removed with everything else.
+- Cuts are placed in quiet where there is any. When you stumble and start again without a pause, the cut goes just ahead of the re-read's first word, in whatever sound is there, and the report doesn't mark that join.
 - English only (Parakeet v2 is an English model).
 - If the script repeats a sentence word for word, a retake of it can occasionally be matched to the wrong instance.
 - No music beds or sound effects; this is for narration.
@@ -128,6 +129,43 @@ Nothing in the pipeline calls an AI service. If you'd like Claude to run it for 
 ## Field log
 
 Notes from real sessions: what was run, what it showed, and what changed in the code because of it. Newest first.
+
+### 2026-10-08, second run: four book chapters, 58 minutes
+
+**The job.** Four recordings of 8 to 21 minutes made over the previous week, each one section of a book: the preface, the introduction, and the first two parts of chapter 1. The script was the whole manuscript, 172,000 words under 90 headings.
+
+| Recording | Recorded | Edited | Restarts cut | Words removed | Speech the voice detector missed |
+|---|---|---|---|---|---|
+| Preface | 8.3 min | 7.9 min | 6 | 44 | 1.9 s |
+| Introduction | 9.7 min | 9.0 min | 8 | 51 | 1.6 s |
+| Chapter 1, part 1 | 18.6 min | 15.4 min | 21 | 277 | 3.9 s |
+| Chapter 1, part 2 | 21.1 min | 17.4 min | 26 | 308 | 16.8 s |
+
+After the fix below: 410 of 412 script lines found (the other two are section titles that were never read aloud), no restarts left on `verify` in any of the four, and masters at −20 dB RMS with noise floors of −64 to −68 dB.
+
+**How it was run.**
+
+- The manuscript is a Word file, and earlier in the day another Word file could not be read while it was open in Word. So its text, from the title page through the appendix, was written out once as Markdown with the headings kept, and checked to give the same words as the .docx, block for block. `batch` ran against that, with `from` and `to` set to section headings.
+- The reader says a part label the manuscript doesn't have ("Part one. The Rise of Automation."). As words between two headings it would have been cut as an aside, so the label was added to that heading in the script ("Part One: The Rise of Automation"). `from` and `to` still found it, because they look for text inside a heading.
+- Same settings as the first run (`comps = false`), and `verify` on every finished file.
+
+**What it showed.**
+
+1. *One word of an abandoned take ended up inside the final take.* The first take read "A radiologist and a truck driver occupy indire" and stopped. The retake read "A radiologist and truck driver occupy...", without the second "a". "Last reading wins" was applied word by word, so the only reading of that "a", the first take's, was kept: 0.2 seconds of the first take set between "and" and "truck" of the retake, with the cuts inside the voice (−24 to −34 dB in a room at −62 dB).
+2. *`verify` could not see it.* The words of the finished file matched the script. It was found by measuring the level at every cut point of all ten edits from the day, which the tool does not do. The other nine were clean.
+3. *The same thing happens when the recognizer misses a short word in the retake.* The retake's own "a" would then still be in the audio, and the first take's would be added to it.
+4. *A second decoding settles most single-word doubts.* The reports flagged 29 lines. Two were the unread titles. Nearly all the rest were rewording, tense, and names. Three differences in the raw transcripts ("understand" for "understanding", "lifetime" for "lifting", "cleaner" for "clearer") came back as the script's word when the finished file was transcribed. One came back the same both times ("nearly possible" for "nearly impossible") and went on the list to hear.
+5. *The recognizer writes `<unk>` for a sound it can't spell.* "C++" came back as `C<unk>` and was listed as an added word, "unk".
+6. *Missed speech follows the muttering.* The detector missed 16.8 seconds in part 2, which has spoken asides between takes, and under 4 seconds in each of the others. Every sound at voice level that produced no words was inside a stretch that was cut.
+7. *Joins.* Of 101 joins in the four final edits, 99 are within 15 dB of the room. One is a retimed pause in a soft breath. The other follows a stumble with no pause before the re-read ("with c, the, with the coalitions"): the cut goes just ahead of the re-read's first word and comes back in 18 dB above the room.
+
+**What changed.**
+
+- `align.py`: a word or phrase that a later take read straight past is cut with the rest of the earlier take. The retake stays in one piece, and the line is reported as missing that word. With comps on, an earlier take can still supply it, spliced at a pause. A take that stops partway and moves on still replaces only what it re-read.
+- `text.py`: the recognizer's `<unk>` is dropped.
+- Tests went from 25 to 27. All ten edit lists from the day were rebuilt with the change: nine came out identical, and part 2 differs only at that sentence, which is now one continuous stretch of the retake.
+
+**Still open.** The level check that found the misplaced word is not part of the tool, so a join that lands in the voice is not reported (see Limits).
 
 ### 2026-10-08: six standalone recordings, 53 minutes
 
@@ -188,7 +226,7 @@ pip install -e ".[test]"
 pytest
 ```
 
-The tests cover script parsing, the alignment rules (restarts, fillers, asides, pickups), the check for speech the voice detector missed, a full edit-and-master pass on synthetic audio (including ad-libs at the edge of a line and the comps switch), and the command line, including which chapters `batch` skips. They don't need the speech models.
+The tests cover script parsing, the alignment rules (restarts, fillers, asides, pickups, words a retake leaves out), the check for speech the voice detector missed, a full edit-and-master pass on synthetic audio (including ad-libs at the edge of a line and the comps switch), and the command line, including which chapters `batch` skips. They don't need the speech models.
 
 ## Credits
 

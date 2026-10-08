@@ -102,3 +102,19 @@ def test_earlier_take_is_spliced_in_only_when_comps_are_on():
     res = build_edit(x, SR, words, lines_for([NAMES[:6]]), last_take_only, log=lambda *a: None)
     assert not res["comps"] and len(res["pickups"]) == 1
     assert detect(res["audio"]) == "alpha bravo charlie delta golf foxtrot".split()
+
+
+def test_word_left_out_of_the_last_take_stays_out_unless_a_comp_restores_it():
+    seq = ["alpha", 0.15, "bravo", 0.15, "charlie", 0.15, "delta", 0.15, "echo", 0.8,              # abandoned
+           "alpha", 0.15, "bravo", 0.15, "delta", 0.15, "echo", 0.15, "foxtrot"]                   # no "charlie"
+    x, words = synth(seq)
+    last_take_only = Settings()
+    last_take_only.comps = False
+    res = build_edit(x, SR, words, lines_for([NAMES[:6]]), last_take_only, log=lambda *a: None)
+    assert detect(res["audio"]) == "alpha bravo delta echo foxtrot".split()    # the first take's "charlie" is not dropped in
+    assert res["summary"]["words_cut"] == 5 and len(res["edl"]) == 1
+    assert [p["problem"] for p in res["pickups"]] == ["missing 'charlie'"]
+
+    res = build_edit(x, SR, words, lines_for([NAMES[:6]]), Settings(), log=lambda *a: None)
+    assert len(res["comps"]) == 1 and not res["pickups"]                       # with comps, spliced at a pause instead
+    assert detect(res["audio"]) == NAMES[:6]

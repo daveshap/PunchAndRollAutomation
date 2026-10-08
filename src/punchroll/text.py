@@ -65,6 +65,7 @@ _TRANSLIT = str.maketrans({"þ": "th", "Þ": "Th", "ð": "d", "Ð": "D", "æ": "
 
 def toks(text: str) -> list[str]:
     """Lowercase word tokens with numbers spelled out; used for both script and transcript."""
+    text = text.replace("<unk>", " ")                     # the recognizer's mark for a sound it can't spell
     text = text.replace("’", "'").replace("‘", "'").replace("&", " and ").translate(_TRANSLIT)
     text = spoken_numbers(text)
     # accents come off their letters; dashes, bullets, and curly quotes separate words instead of joining them
