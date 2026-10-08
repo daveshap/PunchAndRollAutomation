@@ -12,18 +12,22 @@ import numpy as np
 from scipy.ndimage import minimum_filter1d, uniform_filter, uniform_filter1d
 from scipy.signal import butter, istft, sosfilt, stft
 
-from .audio import BLOCK, frame_db, noise_floor_db, rms_db, true_peak_db
+from .audio import BLOCK, frame_db, noise_floor_db, rms_db, true_abs, true_peak_db
 from .config import MasterSettings
 
 
-def _limit(y, gain, ceiling_db, sr, out=None, ms=6, block=1 << 20) -> float:
-    """Apply gain then a look-ahead peak limiter; return the sum of squares of the result."""
+def _limit(y, mag, gain, ceiling_db, sr, out=None, ms=6, block=1 << 20) -> float:
+    """Apply gain then a look-ahead peak limiter; return the sum of squares of the result.
+
+    mag is |y| with its level between samples counted in (audio.true_abs), so the ceiling holds
+    for the true peak and not only for the samples.
+    """
     L = int(sr * ms / 1000)
     pad, ceiling, total = 3 * L, 10 ** (ceiling_db / 20), 0.0
     for a in range(0, len(y), block):
         lo, hi = max(0, a - pad), min(len(y), a + block + pad)
         z = y[lo:hi] * np.float32(gain)
-        g = np.minimum(1.0, ceiling / (np.abs(z) + 1e-12)).astype(np.float32)
+        g = np.minimum(1.0, ceiling / (mag[lo:hi] * np.float32(gain) + 1e-12)).astype(np.float32)
         g = uniform_filter1d(minimum_filter1d(g, size=2 * L + 1), size=L + 1)
         z = (z * g)[a - lo:a - lo + min(block, len(y) - a)]
         total += float(np.dot(z.astype(np.float64), z.astype(np.float64)))
@@ -33,15 +37,18 @@ def _limit(y, gain, ceiling_db, sr, out=None, ms=6, block=1 << 20) -> float:
 
 
 def _level(y, sr, ms: MasterSettings):
-    gain = 1.0
+    mag, gain = true_abs(y), 1.0
     for _ in range(12):
-        cur = 10 * np.log10(_limit(y, gain, ms.limiter_ceiling_db, sr) / max(1, len(y)) + 1e-24)
+        cur = 10 * np.log10(_limit(y, mag, gain, ms.limiter_ceiling_db, sr) / max(1, len(y)) + 1e-24)
         err = ms.rms_db - cur
         if abs(err) < 0.05:
             break
         gain *= 10 ** (err / 20)
     out = np.empty_like(y)
-    _limit(y, gain, ms.limiter_ceiling_db, sr, out=out)
+    _limit(y, mag, gain, ms.limiter_ceiling_db, sr, out=out)
+    over = true_peak_db(out) - ms.limiter_ceiling_db
+    if over > 0.02:                                    # the limiter's gain moves a little between samples too
+        out *= np.float32(10 ** (-over / 20))
     return out, gain
 
 
@@ -129,4 +136,4 @@ def acx_metrics(y: np.ndarray, sr: int) -> dict:
     nf = noise_floor_db(y, sr)
     return {"rms_db": round(rms, 1), "sample_peak_db": round(peak, 2), "true_peak_db": round(tp, 2),
             "noise_floor_db": round(nf, 1),
-            "rms_ok": bool(-23 <= rms <= -18), "peak_ok": bool(peak < -3), "noise_ok": bool(nf < -60)}
+            "rms_ok": bool(-23 <= rms <= -18), "peak_ok": bool(tp <= -3), "noise_ok": bool(nf < -60)}

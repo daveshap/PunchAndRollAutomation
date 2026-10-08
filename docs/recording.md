@@ -31,5 +31,5 @@ When you slip, keep recording. Pause for a breath, then start the sentence again
 ## The script
 
 - Make a narration version of the manuscript that says exactly what you'll say: spoken headings ("Chapter One", "Part One"), and nothing you'll skip. Footnotes, tables, images, and links are removed automatically.
-- Export it to Markdown, for example `pandoc manuscript.docx -t markdown --wrap=none -o narration.md`, or use the .docx directly after `pip install python-docx`.
+- A Word file works as it is (`pip install python-docx`, which `pip install -e ".[all]"` already includes). If you'd rather mark up a Markdown copy, [Pandoc](https://pandoc.org) converts one: `pandoc manuscript.docx -t markdown --wrap=none -o narration.md`. Pandoc is a separate program that pip does not install.
 - Run `punchroll lines --script narration.md --from "Chapter 3" --to "Chapter 4"` to see exactly what a chapter will be matched against.

@@ -52,7 +52,7 @@ def main(argv=None) -> int:
     _common(p)
     p.add_argument("-o", "--out", default="edited", help="output folder (default: ./edited)")
     p.add_argument("--name", help="base name for the output files")
-    p.add_argument("--no-mp3", action="store_true", help="write only the 24-bit WAV master")
+    p.add_argument("--no-mp3", action="store_true", help="write only the WAV master")
     p.add_argument("--report-only", action="store_true", help="analyze and report, but don't render audio")
     p.add_argument("--max-minutes", type=float, help="stop transcribing after this long; run again to resume")
     p.add_argument("--no-level-match", action="store_true", help="don't match later takes' level to the first")
@@ -69,6 +69,8 @@ def main(argv=None) -> int:
     p.add_argument("--only", help="run only chapters whose name contains this text")
     p.add_argument("--force", action="store_true", help="redo chapters that are already up to date")
     p.add_argument("--max-minutes", type=float, help="stop transcribing after this long; run again to resume")
+    p.add_argument("--proof", action="store_true",
+                   help="for finished audio: don't edit, check each chapter against the script as verify does")
 
     p = sub.add_parser("transcribe", help="word timings only")
     p.add_argument("audio", nargs="+")
@@ -173,6 +175,8 @@ def _batch(a) -> int:
     import time
 
     from .pipeline import clean, describe, finished_report
+    from .text import load_script
+    from .verify import verify, verify_markdown
     if sys.version_info >= (3, 11):
         import tomllib
     else:  # pragma: no cover
@@ -184,7 +188,13 @@ def _batch(a) -> int:
     settings = load_settings(config)
     out = base / proj.get("out", "edited")
     mp3 = proj.get("mp3", True)
-    t0, summary = time.time(), []
+    t0, summary, proofed, holder = time.time(), [], [], {}
+
+    def rec():                                     # load the model once, and only if needed
+        if "r" not in holder:
+            holder["r"] = Recognizer(auto_threads(settings.threads))
+        return holder["r"]
+
     for n, ch in enumerate(proj.get("chapter", []), 1):
         name = ch.get("name") or f"chapter-{n:02d}"
         if a.only and a.only not in name:
@@ -199,6 +209,16 @@ def _batch(a) -> int:
             files = [f for f in files if f not in hits] + hits   # a file named again later moves there
         script = base / (ch.get("script") or proj["script"])
         section = (ch.get("from"), ch.get("to"), ch.get("lines"))
+        if a.proof:                                # finished audio: recognize, match, and report; write no audio
+            print(f"\n=== {name} ===")
+            out.mkdir(parents=True, exist_ok=True)
+            lines = load_script(script, *section)
+            for f in files:
+                v = verify(f, lines, rec, transcripts_dir(), settings)
+                (out / f"{Path(f).stem}.verify.json").write_text(json.dumps(v, indent=1), encoding="utf-8")
+                (out / f"{Path(f).stem}.verify.md").write_text(verify_markdown(v), encoding="utf-8")
+                proofed.append((Path(f).name, v))
+            continue
         done = None if a.force else finished_report(out, name, files, script, describe(script, *section), mp3,
                                                     [config] if config else [])
         if done:
@@ -214,6 +234,14 @@ def _batch(a) -> int:
         if res is None:
             return PAUSED
         summary.append((name, res["summary"], len(res["pickups"])))
+    if a.proof:
+        print("\nFile                             length  to check  restarts    RMS  true peak  noise floor")
+        for fname, v in proofed:
+            m = v["acx"]
+            print(f"{fname[:30]:30s}  {v['duration']:>7s}  {len(v['problems']):8d}  {v['restarts_left']:8d}  "
+                  f"{m['rms_db']:5.1f}  {m['true_peak_db']:9.2f}  {m['noise_floor_db']:11.1f}")
+        print(f"Reports: {out}")
+        return 0
     print("\nChapter                         recorded  edited  pickups")
     for name, s, n in summary:
         print(f"{name[:30]:30s}  {s['raw_minutes']:7.1f}  {s['edited_minutes']:6.1f}  {n:7d}")

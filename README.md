@@ -14,7 +14,7 @@ What running it on real recordings has turned up, and what changed in the code b
 2. **Aligns** the transcript to your narration script. Restarts, skipped text, fillers ("um", "sorry"), and asides are explicit moves in the alignment, so a repeated phrase, a retaken sentence, and a re-read paragraph are all recognized the same way. For every word of the script, the last reading wins. A word your retake leaves out stays out, so nothing from the abandoned take is set into the middle of it. A word or two you add at the edge of a line is kept when it runs straight on from the line.
 3. **Comps** where it helps: if the last take of a line has a slip that an earlier take read correctly, the two are spliced at a natural pause. If you reword lines on purpose as you read, `--no-comps` keeps your last take of every line whole.
 4. **Rebuilds the pauses.** Your own pauses and breaths are kept wherever nothing was cut and the pause is in range. Where a take was cut, or a pause is too long or too short, the gap is rebuilt from your room's own tone. Every join gets a short crossfade.
-5. **Masters to ACX**: −20 dB RMS, peaks below −3 dB, noise floor below −60 dB, 1.5 s of room tone at the head and 3 s at the tail. Writes a 24-bit WAV and a 44.1 kHz mono 192 kbps constant-bit-rate MP3.
+5. **Masters to ACX**: −20 dB RMS, true peak at −3.5 dB or lower (ACX's limit is −3), noise floor below −60 dB, 1.5 s of room tone at the head and 3 s at the tail. Writes a WAV at your recording's bit depth and a 44.1 kHz mono 192 kbps constant-bit-rate MP3, and measures the MP3's own peak after encoding it.
 6. **Reports** what to re-record (pickups), every cut and why, every pause it changed, and an edit decision list.
 
 ## Install
@@ -74,6 +74,14 @@ punchroll batch book.toml
 
 Run it again after every recording session. Chapters that are already edited are skipped unless their recordings, script section, or settings changed (`--force` redoes them anyway; `--only ch07` picks one).
 
+**Audio that is already edited and mastered.** `verify` works on any finished file, whoever made it: it recognizes the speech, matches it to the script, lists what differs, and measures the ACX specs, and it writes no audio. For a whole book, point a project file at the finished files and add `--proof`:
+
+```bash
+punchroll batch book.toml --proof
+```
+
+To see what `clean` would cut from a raw recording without rendering anything, add `--report-only` to it.
+
 **Not sure which chapter a recording is?** Transcribe it and read the first few words:
 
 ```bash
@@ -89,7 +97,7 @@ That writes the words and their times to `edited/take-07.words.json`. The transc
 - Footnote markers and footnote text, tables, images, code blocks, links, and `<!-- comments -->` are cleaned out automatically. Numbers are compared the way they're spoken ("1810s" matches "eighteen tens", "$52,000" matches "fifty-two thousand dollars", "8:00 a.m." matches "eight a.m.").
 - Select a chapter with `--from` and `--to` (text from its headings) or `--lines 115-143`.
 
-To make a narration script from a Word manuscript: `pandoc manuscript.docx -t markdown --wrap=none -o narration.md`, then edit it to match what you'll say.
+A Word manuscript works as it is. If you'd rather mark up a Markdown copy, [Pandoc](https://pandoc.org) makes one: `pandoc manuscript.docx -t markdown --wrap=none -o narration.md`. Pandoc is a separate program that pip does not install, and punchroll doesn't need it.
 
 ## Recording for it
 
@@ -107,6 +115,8 @@ The short version: when you slip, keep recording, pause for a breath, and restar
 ## Settings
 
 Pause rules, loudness targets, and alignment costs can be changed with `--config settings.toml`. Every setting and its default is listed in [examples/settings.toml](examples/settings.toml), and the reasoning is in [docs/how-it-works.md](docs/how-it-works.md).
+
+For mastering, `limiter_ceiling_db` is the true-peak ceiling (−3.5 dB, half a decibel under ACX's limit) and `wav_bits` sets the WAV master's bit depth (your recording's own by default).
 
 Two settings decide how much of your own wording survives when you depart from the script. `comps = false` (or `--no-comps` on the command line) keeps the last take of every line whole instead of splicing in part of an earlier one. `adlib` under `[pauses]` is how closely an unscripted word must follow or lead into a line to count as part of it (0.25 seconds by default).
 
@@ -129,6 +139,29 @@ Nothing in the pipeline calls an AI service. If you'd like Claude to run it for 
 ## Field log
 
 Notes from real sessions: what was run, what it showed, and what changed in the code because of it. Newest first.
+
+### 2026-10-08, third entry: an engineer's test on other narrators' audio
+
+**The job.** An audiobook engineer who masters for ACX every day ran the tool on his own material: an 800-page manuscript marked up as Markdown, chapters picked out with `--from "Chapter 99" --to "Chapter 100"`, and a batch on a laptop at 13.7 times real time. It found the one pickup he already knew was in a chapter, and he put its false positives (names, the odd misheard word) level with a paid proofing service's.
+
+**What it showed.**
+
+1. *The masters came out hot on his meter: a true peak of −2.3 dB.* The limiter held the samples at −3.6 dB and left the true peak to land where it would. On the ten recordings below that was −3.4 dB. On a brighter voice it isn't: the same mastering, run on one of those recordings with everything above 3 kHz raised 12 dB, put the true peak at about −1 dB with every sample still at −3.6. The report printed the true peak in brackets and passed the file on the sample peak.
+2. *16-bit recordings came back as 24-bit masters,* half as large again and no better.
+3. *He asked for a way to run only the recognition, matching, and reporting on files that are already mastered.* `verify` did that for one file, but nothing said it works on audio the tool didn't make, and there was no way to run it over a book.
+4. *Pandoc looked like a dependency.* The README gave a `pandoc` command for turning a Word manuscript into Markdown without saying that Pandoc is a separate program, or that a .docx can be used as it is.
+5. *He keeps true peaks at −3.5 dB,* because ACX's own meter has objected to files that read −3 on his.
+
+**What changed.**
+
+- `master.py`, `audio.py`: the limiter works from the level between samples (4x oversampled), so its ceiling is a true-peak ceiling, now −3.5 dB, and the peak passes or fails on the true peak. The brightened recording masters to −3.5 dB.
+- The MP3 is decoded after encoding and measured. If resampling or the encoder pushed its true peak over the ceiling, it is encoded again slightly lower, and the report gives the MP3's figure beside the WAV's. On the ten recordings the MP3s read −3.6 to −3.7 dB.
+- The WAV master is written at the recording's own bit depth, 16 at least and 24 at most (`wav_bits` in the settings overrides it). 16-bit output is dithered.
+- `batch --proof` runs `verify` over every chapter of a project file and writes reports only. The Quick start now says what `verify` and `--report-only` are for.
+- The README and the recording guide say that a Word file works as it is and that Pandoc is optional.
+- Tests went from 27 to 30.
+
+**Still open.** His meter and this tool's were not compared on the same file. punchroll reads true peak 4x oversampled, and a stricter reading (32x) came out up to 0.2 dB higher on the brightened test. The half decibel under ACX's limit is there to cover that.
 
 ### 2026-10-08, second run: four book chapters, 58 minutes
 
@@ -226,7 +259,7 @@ pip install -e ".[test]"
 pytest
 ```
 
-The tests cover script parsing, the alignment rules (restarts, fillers, asides, pickups, words a retake leaves out), the check for speech the voice detector missed, a full edit-and-master pass on synthetic audio (including ad-libs at the edge of a line and the comps switch), and the command line, including which chapters `batch` skips. They don't need the speech models.
+The tests cover script parsing, the alignment rules (restarts, fillers, asides, pickups, words a retake leaves out), the check for speech the voice detector missed, a full edit-and-master pass on synthetic audio (including ad-libs at the edge of a line and the comps switch), the true-peak ceiling on a bright signal and in the MP3, the WAV's bit depth, and the command line, including which chapters `batch` skips and what `--proof` writes. They don't need the speech models.
 
 ## Credits
 
