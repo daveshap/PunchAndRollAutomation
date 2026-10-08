@@ -30,16 +30,25 @@ def _decade(m) -> str:
 _CURRENCY = {"$": "dollars", "€": "euros", "£": "pounds"}
 
 
+def _clock(m) -> str:
+    """8:00 -> eight (as in "eight a.m."), 6:05 -> six oh five, 10:45 -> ten forty-five."""
+    h, mm = num2words(int(m.group(1))), m.group(2)
+    if mm == "00":
+        return h
+    return f"{h} oh {num2words(int(mm))}" if mm.startswith("0") else f"{h} {num2words(int(mm))}"
+
+
 def spoken_numbers(text: str) -> str:
     """Write numbers the way they're usually read: 1810s -> eighteen tens, 4% -> four percent."""
+    text = re.sub(r"\b(\d{1,2}):([0-5]\d)\b", _clock, text)
     text = re.sub(r"\b(\d+)(st|nd|rd|th)\b", lambda m: num2words(int(m.group(1)), to="ordinal"), text)
     text = re.sub(r"\b(1[0-9]{3}|20[0-9]{2})s\b", _decade, text)
     text = re.sub(r"['‘’]([1-9]0)s\b", lambda m: _decade_short(int(m.group(1))), text)
     text = re.sub(r"\b(1[1-9][0-9]{2}|20[0-9]{2})\b(?![.,]\d)",
                   lambda m: num2words(int(m.group(1)), to="year"), text)
     text = re.sub(r"(\d[\d,]*(?:\.\d+)?)\s?%", lambda m: _num(m.group(1)) + " percent", text)
-    text = re.sub(r"([$€£])(\d[\d,]*(?:\.\d+)?)(?:\s*(thousand|million|billion|trillion))?",
-                  lambda m: f"{_num(m.group(2))} {m.group(3) or ''} {_CURRENCY[m.group(1)]}", text)
+    text = re.sub(r"([$€£])(\d[\d,]*(?:\.\d+)?)(?:\s*(thousand|million|billion|trillion))?",   # heard as "is$450": pad it
+                  lambda m: f" {_num(m.group(2))} {m.group(3) or ''} {_CURRENCY[m.group(1)]} ", text)
     text = re.sub(r"\d[\d,]*(?:\.\d+)?", lambda m: _num(m.group(0)), text)
     return text
 
@@ -49,12 +58,20 @@ def _decade_short(n: int) -> str:
     return (w[:-1] + "ies") if w.endswith("y") else w + "s"
 
 
+# letters that Unicode normalization doesn't reduce to plain ASCII
+_TRANSLIT = str.maketrans({"þ": "th", "Þ": "Th", "ð": "d", "Ð": "D", "æ": "ae", "Æ": "Ae", "œ": "oe", "Œ": "Oe",
+                           "ø": "o", "Ø": "O", "ß": "ss", "ł": "l", "Ł": "L", "đ": "d", "Đ": "D", "ı": "i"})
+
+
 def toks(text: str) -> list[str]:
     """Lowercase word tokens with numbers spelled out; used for both script and transcript."""
-    text = text.replace("’", "'").replace("‘", "'").replace("&", " and ")
+    text = text.replace("’", "'").replace("‘", "'").replace("&", " and ").translate(_TRANSLIT)
     text = spoken_numbers(text)
-    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+    # accents come off their letters; dashes, bullets, and curly quotes separate words instead of joining them
+    text = "".join(c if c.isascii() else "" if unicodedata.category(c)[0] in "LM" else " "
+                   for c in unicodedata.normalize("NFKD", text)).lower()
     text = re.sub(r"[-/]", " ", text)
+    text = re.sub(r"\bpercent\b", "per cent", text)       # the recognizer writes it both ways, a word at a time
     return [w.strip("'") for w in re.sub(r"[^a-z0-9' ]+", " ", text).split() if w.strip("'")]
 
 
@@ -97,7 +114,7 @@ def clean_inline(s: str, keep_emphasis: bool = False) -> str:
 
 def _markdown_blocks(lines: list[str]) -> list[tuple[str, str]]:
     blocks, para = [], []
-    in_code = in_front = in_note = False
+    in_code = in_front = in_note = in_comment = False
 
     def flush():
         if para:
@@ -112,11 +129,18 @@ def _markdown_blocks(lines: list[str]) -> list[tuple[str, str]]:
         if in_front:
             in_front = s not in ("---", "...")
             continue
-        if s.lstrip().startswith(("```", "~~~")):
+        if s.lstrip().startswith(("```", "~~~")) and not in_comment:
             flush()
             in_code = not in_code
             continue
         if in_code:
+            continue
+        if in_comment:                                  # inside a multi-line <!-- ... -->
+            in_comment = "-->" not in s
+            continue
+        if s.lstrip().startswith("<!--"):
+            flush()
+            in_comment = "-->" not in s
             continue
         if not s.strip():
             flush()
@@ -128,7 +152,7 @@ def _markdown_blocks(lines: list[str]) -> list[tuple[str, str]]:
             flush()
             blocks.append(("heading", clean_inline(re.sub(r"\s#+\s*$", "", s.strip().lstrip("#")))))
             continue
-        if re.match(r"^\s*\|", s) or re.match(r"^\s*([-*_]\s*){3,}$", s) or s.lstrip().startswith("<!--"):
+        if re.match(r"^\s*\|", s) or re.match(r"^\s*([-*_]\s*){3,}$", s):
             flush()
             continue
         if re.match(r"^\s*\[\^[^\]]+\]:", s):

@@ -78,24 +78,6 @@ def build_edit(x: np.ndarray, sr: int, words: list[dict], lines: list[Line], set
     info = last_take(ev, hyp, sent_of)
     restarts = sum(1 for e in ev if e[0] == "restart")
 
-    # where each spoken token sits in the script; an inserted word sits just after the word before it
-    anchors, last = [], -1.0
-    for i in range(len(hyp)):
-        if info[i]["kind"] != "ins":
-            last = float(info[i]["pos"])
-            anchors.append(last)
-        else:
-            anchors.append(last + 0.5 if last >= 0 else -1.0)
-    by_line = defaultdict(list)
-    for i, a in enumerate(anchors):
-        if a >= 0:
-            by_line[sent_of[int(a)]].append(i)
-
-    def reading(k, pred):
-        return [i for _, i in sorted((anchors[i], i) for i in by_line[k] if pred(i))]
-
-    readings = [reading(k, lambda i: info[i]["kept"]) for k in range(len(lines))]
-
     # ---- where the voice is
     e_db, hop = frame_db(x, sr)
     nfr = len(e_db)
@@ -142,9 +124,60 @@ def build_edit(x: np.ndarray, sr: int, words: list[dict], lines: list[Line], set
         rs = runs(words[w]["start"] + 0.10, hi, calm)
         return max(rs, key=lambda r: r[1] - r[0]) if rs else None
 
+    # ---- ad-libs at the edge of a line: "...until they were cheap enough.", "And groceries don't fall."
+    # A word or two that runs straight on from the kept word beside it is part of the reading, and
+    # cutting it would mean cutting where there is no pause. An aside or a stray sound stands apart.
+    leads = set()                                      # ad-libs that open the next line instead of closing this one
+    i = 0
+    while i < len(hyp):
+        j = i
+        while j < len(hyp) and info[j]["why"] == "between lines":
+            j += 1
+        if j == i:
+            i += 1
+            continue
+        groups = []                                    # the run's words, split wherever the reader paused
+        for w in dict.fromkeys(hyp_w[i:j]):
+            if groups and w == groups[-1][-1] + 1 and pause_after(w - 1) < P.adlib:
+                groups[-1].append(w)
+            else:
+                groups.append([w])
+        w0, w1 = groups[0][0], groups[-1][-1]
+        after = i > 0 and info[i - 1]["kept"] and w0 == hyp_w[i - 1] + 1 and pause_after(w0 - 1) < P.adlib
+        before = j < len(hyp) and info[j]["kept"] and hyp_w[j] == w1 + 1 and pause_after(w1) < P.adlib
+        joined = (groups[0] if after and len(groups[0]) <= 2 else [],
+                  groups[-1] if before and len(groups[-1]) <= 2 else [])
+        for g in range(i, j):
+            if hyp_w[g] in joined[0] or hyp_w[g] in joined[1]:
+                info[g]["kept"], info[g]["why"] = True, None
+                if hyp_w[g] not in joined[0]:
+                    leads.add(g)
+        i = j
+
+    # where each spoken token sits in the script: an inserted word sits just after the word before it,
+    # or just before the word after it when it opens that line
+    anchors, last = [], -1.0
+    for i in range(len(hyp)):
+        if info[i]["kind"] != "ins":
+            last = float(info[i]["pos"])
+            anchors.append(last)
+        elif i in leads:
+            anchors.append(next(info[n]["pos"] for n in range(i + 1, len(hyp)) if info[n]["kind"] != "ins") - 0.5)
+        else:
+            anchors.append(last + 0.5 if last >= 0 else -1.0)
+    by_line = defaultdict(list)
+    for i, a in enumerate(anchors):
+        if a >= 0:
+            by_line[sent_of[int(a + 0.5) if i in leads else int(a)]].append(i)
+
+    def reading(k, pred):
+        return [i for _, i in sorted((anchors[i], i) for i in by_line[k] if pred(i))]
+
+    readings = [reading(k, lambda i: info[i]["kept"]) for k in range(len(lines))]
+
     # ---- comps: an earlier take fixes a slip in the last one, spliced at a pause
     comps = []
-    for k, ln in enumerate(lines):
+    for k, ln in enumerate(lines) if settings.comps else ():
         st, base = line_toks[k], readings[k]
         if not base:
             continue

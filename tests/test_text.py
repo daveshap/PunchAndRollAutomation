@@ -2,16 +2,29 @@ from punchroll.text import _markdown_blocks, build_lines, select_section, split_
 
 
 def test_numbers_are_spoken():
-    assert toks("In 1811, wages fell 31%.") == ["in", "eighteen", "eleven", "wages", "fell", "thirty", "one", "percent"]
+    assert toks("In 1811, wages fell 31%.") == ["in", "eighteen", "eleven", "wages", "fell", "thirty", "one", "per", "cent"]
     assert toks("$52,000 a year") == ["fifty", "two", "thousand", "dollars", "a", "year"]
     assert toks("$3.1 trillion") == ["three", "point", "one", "trillion", "dollars"]
     assert toks("the 1760s and the 20th century") == ["the", "seventeen", "sixties", "and", "the", "twentieth", "century"]
     assert toks("in the '90s") == ["in", "the", "nineties"]
 
 
+def test_clock_times():
+    assert toks("At 8:00 a.m. and 6:05 p.m.") == ["at", "eight", "a", "m", "and", "six", "oh", "five", "p", "m"]
+    assert toks("They vote at 4:45.") == ["they", "vote", "at", "four", "forty", "five"]
+
+
 def test_text_cleanup():
     assert toks("Mondragón’s café & bar") == ["mondragon's", "cafe", "and", "bar"]
     assert toks("post-labor, self-government") == ["post", "labor", "self", "government"]
+    assert toks("Þingvellir, Søren, Straße") == ["thingvellir", "soren", "strasse"]
+
+
+def test_dashes_and_currency_do_not_join_words():
+    assert toks("operations—a one followed") == ["operations", "a", "one", "followed"]
+    assert toks("commander—“Ned Ludd,” or") == ["commander", "ned", "ludd", "or"]
+    assert toks("is$450 a week") == ["is", "four", "hundred", "and", "fifty", "dollars", "a", "week"]
+    assert toks("four per cent") == toks("four percent") == toks("4%") == ["four", "per", "cent"]
 
 
 def test_sentence_split_keeps_abbreviations():
@@ -47,6 +60,11 @@ code
     assert ("heading", "Section Two") in blocks
     assert ("body", "A list item.") in blocks
     assert not any("footnote" in t or "code" in t for _, t in blocks)
+
+
+def test_markdown_comments_are_not_read():
+    md = "<!-- a note\nthat spans lines -->\n# Title\n\n<!-- one line -->\nBody text.\n"
+    assert _markdown_blocks(md.splitlines()) == [("heading", "Title"), ("body", "Body text.")]
 
 
 def test_select_section_and_lines():

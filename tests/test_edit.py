@@ -72,3 +72,33 @@ def test_restart_is_removed_and_order_kept():
     y, m = master(res["audio"], SR, Settings().master, res["room_tone"], log=lambda *a: None)
     assert abs(m["rms_db"] + 20) < 0.3
     assert m["true_peak_db"] < -3
+
+
+def test_adlib_that_runs_on_is_kept_and_a_stray_word_is_cut():
+    lines = lines_for([NAMES[:3], NAMES[3:5], NAMES[5:7]])
+    seq = ["alpha", 0.15, "bravo", 0.15, "charlie", 0.05, "hotel", 0.7,      # "hotel" runs on from the line's end
+           "india", 0.05, "delta", 0.15, "echo", 0.7,                          # "india" leads straight into the next line
+           "juliet", 0.7,                                                      # "juliet" stands apart from both
+           "foxtrot", 0.15, "golf"]
+    x, words = synth(seq)
+    res = build_edit(x, SR, words, lines, Settings(), log=lambda *a: None)
+    assert detect(res["audio"]) == "alpha bravo charlie hotel india delta echo foxtrot golf".split()
+    assert res["summary"]["words_cut"] == 1
+    assert [c["words"] for c in res["cuts"]] == ["juliet"]
+    assert [p["problem"] for p in res["pickups"]] == ["added 'hotel'", "added 'india'"]
+    assert [p["line"] for p in res["pickups"]] == [1, 2]                        # each stays with the line it joins
+
+
+def test_earlier_take_is_spliced_in_only_when_comps_are_on():
+    seq = ["alpha", 0.15, "bravo", 0.15, "charlie", 0.3, "delta", 0.15, "echo", 0.15, "foxtrot", 0.8,
+           "alpha", 0.15, "bravo", 0.15, "charlie", 0.3, "delta", 0.15, "golf", 0.15, "foxtrot"]   # "golf" is a slip
+    x, words = synth(seq)
+    res = build_edit(x, SR, words, lines_for([NAMES[:6]]), Settings(), log=lambda *a: None)
+    assert len(res["comps"]) == 1 and not res["pickups"]
+    assert detect(res["audio"]) == NAMES[:6]
+
+    last_take_only = Settings()
+    last_take_only.comps = False
+    res = build_edit(x, SR, words, lines_for([NAMES[:6]]), last_take_only, log=lambda *a: None)
+    assert not res["comps"] and len(res["pickups"]) == 1
+    assert detect(res["audio"]) == "alpha bravo charlie delta golf foxtrot".split()

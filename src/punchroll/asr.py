@@ -5,6 +5,11 @@ to 20 seconds (a short phrase decoded on its own can come back empty; with its
 neighbors it doesn't), and transcribed with NVIDIA Parakeet TDT 0.6B v2 through
 sherpa-onnx. Results are cached per file, chunk by chunk, so an interrupted run
 picks up where it stopped.
+
+Two checks keep speech from going unheard, because the editor treats whatever lies
+between two recognized words as a pause and keeps it: sound at the voice's level that
+the detector left out is added to its stretches (add_missed_speech), and a stretch
+that comes back without words from its chunk is decoded again on its own.
 """
 from __future__ import annotations
 
@@ -14,11 +19,55 @@ import time
 from pathlib import Path
 
 import numpy as np
+from scipy.ndimage import binary_closing
 
 from . import models
-from .audio import resample
+from .audio import frame_db, resample
 
 SR16 = 16000
+SEGMENTER = "2"          # part of the cache key: raise it when the stretches or the retry change
+
+
+def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
+    d = np.diff(np.concatenate([[0], mask.astype(np.int8), [0]]))
+    return [(int(a), int(b)) for a, b in zip(np.flatnonzero(d == 1), np.flatnonzero(d == -1))]
+
+
+def add_missed_speech(x16: np.ndarray, segs, sr: int = SR16, max_len: float = 25.0):
+    """The detector's stretches, plus sound at the voice's level that it left out.
+
+    The detector sometimes starts a stretch late, ends one early, or misses a short
+    phrase between two pauses. A false start it misses would stay in the edit, and a
+    line it misses would be reported as not read. So any sound that stays within 25 dB
+    of the voice for 0.15 s or more, and comes within 15 dB of it, is added: joined to
+    the stretch it touches, or as a stretch of its own. Breaths and clicks fall short.
+    """
+    segs = [(int(a), int(b)) for a, b in segs]
+    if not segs:
+        return segs
+    db, hop = frame_db(x16, sr, 0.01)
+    held = np.zeros(len(db), bool)                 # frames the detector already has
+    for a, b in segs:
+        held[a // hop:-(-b // hop)] = True
+    rest = db[~held & (db > -90)]
+    if not held.any() or not len(rest):
+        return segs
+    level, floor = float(np.percentile(db[held], 90)), float(np.percentile(rest, 20))
+    gate = max(level - 25, floor + 12)
+    if gate > level - 10:                          # too noisy to tell the voice from the room by level
+        return segs
+    extra = []
+    for s, e in _runs(binary_closing(db > gate, structure=np.ones(15, bool))):   # bridges dips under 150 ms
+        if e - s < 15 or db[s:e].max() < level - 15:
+            continue
+        extra += [((s + a) * hop, (s + b) * hop) for a, b in _runs(~held[s:e]) if b - a >= 10]
+    out = []
+    for a, b in sorted(segs + extra):
+        if out and a - out[-1][1] <= hop and b - out[-1][0] <= max_len * sr:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out
 
 
 def merge_segments(segs, max_gap=1.2 * SR16, max_len=20 * SR16):
@@ -104,7 +153,7 @@ def file_key(path: str | Path) -> str:
     """Identifies a recording by its size and its first and last megabyte (fast, survives renames)."""
     p = Path(path)
     size = p.stat().st_size
-    h = hashlib.sha1(f"{size}:{models.ASR_NAME}".encode())
+    h = hashlib.sha1(f"{size}:{models.ASR_NAME}:{SEGMENTER}".encode())
     with open(p, "rb") as f:
         h.update(f.read(1 << 20))
         if size > 2 << 20:
@@ -140,9 +189,12 @@ def transcribe(path, x: np.ndarray, sr: int, rec, cache_dir, max_seconds=None, l
         segs = [tuple(s) for s in json.loads(vadf.read_text())]
     else:
         t0 = time.time()
-        segs = rec.vad(x16)
+        found = rec.vad(x16)
+        segs = add_missed_speech(x16, found)
         vadf.write_text(json.dumps(segs))
-        log(f"  {Path(path).name}: {len(segs)} stretches of speech found in {time.time() - t0:.0f} s")
+        added = (sum(b - a for a, b in segs) - sum(b - a for a, b in found)) / SR16
+        log(f"  {Path(path).name}: {len(segs)} stretches of speech found in {time.time() - t0:.0f} s"
+            + (f" ({added:.1f} s of it missed by the voice detector)" if added >= 0.1 else ""))
     chunks = merge_segments(segs)
     done = {}
     if part.is_file():
@@ -160,6 +212,14 @@ def transcribe(path, x: np.ndarray, sr: int, rec, cache_dir, max_seconds=None, l
         for n, i in enumerate(todo, 1):
             a, b = chunks[i]
             done[i] = rec.decode(x16, a, b)
+            inside = [s for s in segs if a <= s[0] and s[1] <= b]
+            for sa, sb in inside if len(inside) > 1 else ():
+                lo, hi = sa / SR16, sb / SR16
+                if any(lo - 0.3 <= w["start"] <= hi + 0.2 for w in done[i]):
+                    continue
+                # the recognizer can drop a short stretch at the end of a long chunk; alone, it hears it
+                done[i] += [w for w in rec.decode(x16, sa, sb) if lo - 0.1 <= w["start"] <= hi]
+            done[i].sort(key=lambda w: w["start"])
             f.write(json.dumps({"chunk": i, "words": done[i]}) + "\n")
             f.flush()
             spoken += (b - a) / SR16

@@ -20,7 +20,7 @@ When you slip, keep recording. Pause for a breath, then start the sentence again
 
 - One chapter per file is simplest. If a chapter takes several sittings, record several files and list them in the order you made them.
 - Read headings exactly as they're written in the script.
-- Stay on script. If you change wording on purpose, change the script too; otherwise the change shows up as a pickup.
+- Stay on script. If you change wording on purpose, change the script too; otherwise the change shows up as a pickup. If you reword often, run with `--no-comps` so an earlier take is never spliced over your rewording.
 
 ## Pickups
 

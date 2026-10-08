@@ -55,6 +55,7 @@ class PauseSettings:
     before_heading: tuple = (1.80, 3.00, 2.20)
     cut_sentence: tuple = (0.55, 0.90)      # pause rebuilt where a take was cut between sentences
     cut_within: tuple = (0.12, 0.45)        # pause rebuilt where a take was cut inside a sentence
+    adlib: float = 0.25                     # an unscripted word at a line's edge is kept if it runs on within this
     tolerance_short: float = 0.08           # leave a pause alone if it is this close to the minimum
     tolerance_long: float = 0.15            # ... or this close to the maximum
 
@@ -78,6 +79,7 @@ class Settings:
     master: MasterSettings = field(default_factory=MasterSettings)
     threads: int = 0              # speech recognition threads; 0 = pick automatically
     level_match: bool = True      # match the speech level of later takes to the first one
+    comps: bool = True            # splice an earlier take over a slip in the last one; off keeps the last take whole
 
 
 def auto_threads(requested: int = 0) -> int:
@@ -99,7 +101,7 @@ def load_settings(path: str | os.PathLike | None = None) -> Settings:
             if k not in names:
                 raise ValueError(f"unknown setting [{section}] {k}")
             setattr(target, k, tuple(v) if isinstance(v, list) else v)
-    for k in ("threads", "level_match"):
+    for k in ("threads", "level_match", "comps"):
         if k in data:
             setattr(s, k, data[k])
     return s
