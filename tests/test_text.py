@@ -18,6 +18,7 @@ def test_text_cleanup():
     assert toks("Mondragón’s café & bar") == ["mondragon's", "cafe", "and", "bar"]
     assert toks("post-labor, self-government") == ["post", "labor", "self", "government"]
     assert toks("Þingvellir, Søren, Straße") == ["thingvellir", "soren", "strasse"]
+    assert toks("Pascal and C<unk> in") == toks("Pascal and C++ in") == ["pascal", "and", "c", "in"]
 
 
 def test_dashes_and_currency_do_not_join_words():

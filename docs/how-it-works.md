@@ -15,7 +15,7 @@ Every finished chunk is written to the transcript cache immediately, so an inter
 
 ## 2. Align, allowing restarts
 
-Script and transcript are reduced to the same tokens: lowercase, accents removed, dashes and other punctuation treated as spaces, numbers spelled out the way they're read (years, decades, ordinals, percentages, money, clock times). Compounds are reconciled in both directions ("ChatGPT" vs "chat GPT", "cow paths" vs "cowpaths").
+Script and transcript are reduced to the same tokens: lowercase, accents removed, dashes and other punctuation treated as spaces, numbers spelled out the way they're read (years, decades, ordinals, percentages, money, clock times), and the recognizer's `<unk>` (a sound it can't spell) dropped. Compounds are reconciled in both directions ("ChatGPT" vs "chat GPT", "cow paths" vs "cowpaths").
 
 The transcript is then consumed in order while a pointer moves through the script. Each move has a cost, in tenths:
 
@@ -42,6 +42,7 @@ Where a new recording starts (a pickup file, the next session), the pointer may 
 
 For every script word, the last spoken word aligned to it wins. Tokens it replaces are cut ("re-read later"). Then:
 
+- A word that a later take read straight past is cut with the rest of the earlier take. If the first take had "and a truck driver" and the retake has "and truck driver", the first take's "a" is not set into the middle of the retake; the report lists the line as missing that word. The same holds when the recognizer misses a short word in the retake: the retake stays in one piece. A take that stops partway and moves on still replaces only the words it re-read.
 - A misread word just before a mid-line restart, which the restart didn't re-read, is dropped: it's what the reader stopped to fix.
 - Inserted words are kept only as short ad-libs (one or two words): inside a kept stretch of a single line, or at the edge of a line when they run straight on from the kept word beside them, with less than 0.25 seconds between ("until they were cheap enough.", "And groceries don't fall."). Cutting those would mean cutting where there is no pause. Fillers, asides that stand apart between lines, and anything outside the text are cut.
 

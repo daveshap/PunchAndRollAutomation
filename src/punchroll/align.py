@@ -12,6 +12,7 @@ about 250 MB.
 """
 from __future__ import annotations
 
+import bisect
 from collections import defaultdict
 
 import numpy as np
@@ -216,6 +217,25 @@ def last_take(events, hyp: list[str], sent_of: list[int]):
         if d["kind"] != "ins":
             d["kept"] = writer[d["pos"]] == i
             d["why"] = None if d["kept"] else "re-read later"
+    # a word a later take read straight past is not part of the last reading: keeping the earlier
+    # take's would drop one word or phrase of that take into the middle of the later one
+    read, passed, pass_id = defaultdict(list), [], 0
+    for e in events:
+        if e[0] == "restart":
+            pass_id += 1
+        elif e[0] in ("match", "sub"):
+            read[pass_id].append(e[2])
+        elif e[0] == "del":
+            passed.append((pass_id, e[2], False))
+        elif e[0] == "skip" and sent_of[e[2]] == sent_of[e[3] - 1]:
+            passed += [(pass_id, q, True) for q in range(e[2], e[3])]
+    for p, q, one_line in passed:
+        got = read[p]
+        at = bisect.bisect_left(got, q)
+        if at in (0, len(got)) or one_line and not sent_of[got[at - 1]] == sent_of[q] == sent_of[got[at]]:
+            continue                                   # the take started or stopped here; it didn't read past
+        if q in writer and info[writer[q]]["pass"] < p:
+            info[writer[q]]["kept"], info[writer[q]]["why"] = False, "re-read later"
     # a misread word right before a mid-line restart is what the reader stopped to fix;
     # if the restart didn't re-read it, drop it
     pass_id = 0
