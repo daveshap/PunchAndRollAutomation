@@ -56,6 +56,7 @@ def main(argv=None) -> int:
     p.add_argument("--report-only", action="store_true", help="analyze and report, but don't render audio")
     p.add_argument("--max-minutes", type=float, help="stop transcribing after this long; run again to resume")
     p.add_argument("--no-level-match", action="store_true", help="don't match later takes' level to the first")
+    p.add_argument("--no-comps", action="store_true", help="always keep the last take whole (no two-take splices)")
 
     p = sub.add_parser("verify", help="re-transcribe an edited file and check it against the script and ACX")
     p.add_argument("audio")
@@ -95,6 +96,8 @@ def _settings(a):
         s.threads = a.threads
     if getattr(a, "no_level_match", False):
         s.level_match = False
+    if getattr(a, "no_comps", False):
+        s.comps = False
     return s
 
 

@@ -6,11 +6,13 @@ Record straight through. When you slip, pause and start the sentence again. `pun
 
 On a real 18.6-minute chapter read with 21 restarts, it found all 121 lines of the script, removed 274 words of false starts and asides, and produced 15.4 minutes of finished audio in 2.8 minutes of processing on two CPU cores. Re-transcribing the result found no restarts left.
 
+What running it on real recordings has turned up, and what changed in the code because of it, is in the [field log](#field-log).
+
 ## What it does
 
-1. **Transcribes** each recording with word timings, offline, using NVIDIA Parakeet TDT 0.6B v2 through sherpa-onnx.
-2. **Aligns** the transcript to your narration script. Restarts, skipped text, fillers ("um", "sorry"), and asides are explicit moves in the alignment, so a repeated phrase, a retaken sentence, and a re-read paragraph are all recognized the same way. For every word of the script, the last reading wins.
-3. **Comps** where it helps: if the last take of a line has a slip that an earlier take read correctly, the two are spliced at a natural pause.
+1. **Transcribes** each recording with word timings, offline, using NVIDIA Parakeet TDT 0.6B v2 through sherpa-onnx. Sound at the voice's level that the voice detector skips (a clipped sentence start, a muttered aside) is transcribed too, so it can't sit unheard in a pause.
+2. **Aligns** the transcript to your narration script. Restarts, skipped text, fillers ("um", "sorry"), and asides are explicit moves in the alignment, so a repeated phrase, a retaken sentence, and a re-read paragraph are all recognized the same way. For every word of the script, the last reading wins. A word or two you add at the edge of a line is kept when it runs straight on from the line.
+3. **Comps** where it helps: if the last take of a line has a slip that an earlier take read correctly, the two are spliced at a natural pause. If you reword lines on purpose as you read, `--no-comps` keeps your last take of every line whole.
 4. **Rebuilds the pauses.** Your own pauses and breaths are kept wherever nothing was cut and the pause is in range. Where a take was cut, or a pause is too long or too short, the gap is rebuilt from your room's own tone. Every join gets a short crossfade.
 5. **Masters to ACX**: −20 dB RMS, peaks below −3 dB, noise floor below −60 dB, 1.5 s of room tone at the head and 3 s at the tail. Writes a 24-bit WAV and a 44.1 kHz mono 192 kbps constant-bit-rate MP3.
 6. **Reports** what to re-record (pickups), every cut and why, every pause it changed, and an edit decision list.
@@ -27,6 +29,14 @@ punchroll models          # downloads about 480 MB of speech models, once
 ```
 
 Models go to your user cache folder (`~/.cache/punchroll`, `~/Library/Caches/punchroll`, or `%LOCALAPPDATA%\punchroll`). Set `PUNCHROLL_MODELS` to put them elsewhere.
+
+**If `punchroll` isn't found after installing** (common on Windows with more than one Python): pip installed it into a Python whose `Scripts` folder isn't on your PATH, and `py` may be starting a different Python than the one pip used. pip's output names the Python it installed into. Run punchroll through that one:
+
+```bash
+py -3.13 -m punchroll models
+```
+
+Every `punchroll ...` command below works the same way as `py -3.13 -m punchroll ...`.
 
 ## Quick start
 
@@ -64,6 +74,14 @@ punchroll batch book.toml
 
 Run it again after every recording session. Chapters that are already edited are skipped unless their recordings, script section, or settings changed (`--force` redoes them anyway; `--only ch07` picks one).
 
+**Not sure which chapter a recording is?** Transcribe it and read the first few words:
+
+```bash
+punchroll transcribe take-07.wav
+```
+
+That writes the words and their times to `edited/take-07.words.json`. The transcript is cached, so `clean` won't transcribe the file again.
+
 ## The script
 
 - Markdown, plain text, or Word (`.docx`, using heading styles for headings).
@@ -82,12 +100,15 @@ The short version: when you slip, keep recording, pause for a breath, and restar
 - Transcription runs at 7 to 8 times real time on 2 CPU cores, and faster with more (`--threads`).
 - Transcripts are cached per recording (in `~/.cache/punchroll/transcripts`, or `PUNCHROLL_CACHE`), so changing settings or adding pickups only transcribes what's new.
 - Measured on 2 CPU cores: an 18.6-minute chapter (44.1 kHz MP3) took 2.8 minutes the first time and 0.5 minutes on re-runs, peaking at 0.7 GB of memory on re-runs. A 56-minute chapter (48 kHz, 24-bit WAV, 480 MB) took 8.3 minutes the first time and 1.7 minutes on re-runs, peaking at 2.3 GB while transcribing and 1.7 GB after.
+- Measured on 8 CPU cores (8 threads): transcription ran at 16 to 17 times real time. A 9-minute recording took about half a minute to transcribe and another 20 seconds to edit and master.
 - For chapters much longer than 90 minutes, record and edit in sections.
 - `--max-minutes N` stops transcription after N minutes and exits with code 3; running the same command again resumes where it stopped. Useful in shells with a time limit; leave a couple of minutes of headroom for editing and mastering.
 
 ## Settings
 
 Pause rules, loudness targets, and alignment costs can be changed with `--config settings.toml`. Every setting and its default is listed in [examples/settings.toml](examples/settings.toml), and the reasoning is in [docs/how-it-works.md](docs/how-it-works.md).
+
+Two settings decide how much of your own wording survives when you depart from the script. `comps = false` (or `--no-comps` on the command line) keeps the last take of every line whole instead of splicing in part of an earlier one. `adlib` under `[pauses]` is how closely an unscripted word must follow or lead into a line to count as part of it (0.25 seconds by default).
 
 ## Running it with an AI agent (optional)
 
@@ -98,10 +119,67 @@ Nothing in the pipeline calls an AI service. If you'd like Claude to run it for 
 
 ## Limits
 
-- The recognizer sometimes mishears names, numbers, and short words, so pickups are places to listen, not verdicts.
+- The recognizer sometimes mishears names, numbers, and short words, so pickups are places to listen, not verdicts. It formats numbers by context: "$450" has come back as "$450,000" right after a larger figure was read.
+- A sound at the voice's level with no recognizable words in it (a cough, a throat-clear) that falls between two kept sentences stays in the edit, and no report lists it. Between a cut take and its re-read it is removed with everything else.
 - English only (Parakeet v2 is an English model).
 - If the script repeats a sentence word for word, a retake of it can occasionally be matched to the wrong instance.
 - No music beds or sound effects; this is for narration.
+
+## Field log
+
+Notes from real sessions: what was run, what it showed, and what changed in the code because of it. Newest first.
+
+### 2026-10-08: six standalone recordings, 53 minutes
+
+**The job.** Six mono 44.1 kHz WAV exports of 8 to 9.5 minutes, each one piece of a 24-piece script (about 1,000 to 1,150 words a piece), read with restarts, spoken asides, and deliberate rewording. Windows 10, 8 cores, Python 3.13 with 3.14 also installed.
+
+| Recording | Recorded | Edited | Restarts cut | Words removed | Speech the voice detector missed |
+|---|---|---|---|---|---|
+| 1 | 9.4 min | 8.3 min | 6 | 93 | 2.1 s |
+| 2 | 8.1 min | 7.5 min | 3 | 43 | 2.0 s |
+| 3 | 8.6 min | 8.0 min | 4 | 48 | 2.5 s |
+| 4 | 9.3 min | 8.0 min | 6 | 76 | 8.2 s |
+| 5 | 8.8 min | 7.7 min | 5 | 92 | 5.3 s |
+| 6 | 8.7 min | 7.6 min | 9 | 111 | 5.5 s |
+
+After the fixes below: all 500 script lines found, `verify` reports no restarts left in any of the six, and every master is at −20 dB RMS with true peaks at −3.4 dB and a noise floor between −65 and −68 dB.
+
+**How it was run.**
+
+```bash
+py -3.13 -m punchroll transcribe take-01.wav
+py -3.13 -m punchroll clean take-01.wav --script script.md --from "Title of this piece" --to "Title of the next piece" --no-comps --name take-01
+py -3.13 -m punchroll verify edited/take-01.mp3 --script script.md --from "Title of this piece" --to "Title of the next piece"
+```
+
+- `pip install -e ".[all]"` installed into Python 3.13, but `py` started 3.14 and the `Scripts` folder wasn't on the PATH, so neither `punchroll` nor `py -m punchroll` worked until the version was named. The Install section now covers this.
+- Each recording was one piece, so `transcribe` came first to read its opening words, and `--from` and `--to` were the title of that piece and of the one after it.
+- Once the settings were right, the six became a project file run with `batch`, with `comps = false` in its settings file and one `[[chapter]]` per recording. A wildcard in `audio` picks up a second take or a pickups file later.
+- `verify` ran on every finished file. It is the step that showed the first pass was wrong.
+
+**What it showed.**
+
+1. *A clean report is not proof.* The first pass reported every line found and every spec passed, and `verify` still found a false start in recording 1. The recognizer had returned no words for a 0.8-second stretch at the end of an 18.5-second chunk, after a one-second pause. Decoded on its own, or with the chunk ending 0.3 seconds later, the words came back.
+2. *The voice detector misses speech at full level.* The recordings had a voice level around −17 dB and a noise floor near −60 dB, and the speech it missed peaked at −14 to −16 dB. Most misses were sentence starts caught 0.1 to 0.3 seconds late. The rest were the first two words of a sentence after a pause, the last word of a sentence, a two-word sentence between two pauses, an aborted word before a sentence, and, in two recordings, muttered asides of about 2 seconds between takes that it did not mark at all.
+3. *What a miss costs depends on where it falls.* The editor keeps whatever lies between two recognized words as a pause. Between a cut take and its re-read, an unheard sound is removed with the rest. Between two kept sentences it stays. The first pass left one false start and two sub-second blips in the audio that way, and reported two words and a whole line as missing that were there.
+4. *Rewording on purpose runs into two rules.* The reader changed about 30 small things ("technician" to "tech", an added "actually"). Listing those as pickups is right. But a word added at the edge of a sentence ("...until they were cheap enough.", "And groceries don't fall.") was classed as an aside between lines and cut, with no pause to cut at. Both cuts landed inside continuous speech, and the re-check still heard the words. And one comp put the second half of an earlier take over a sentence the reader had re-read.
+5. *Three token mismatches made false differences.* The recognizer attaches an amount to the word before it ("is$450"). An em dash without spaces joined two script words into one. "per cent" and "percent" both appeared in a single transcript.
+6. *A difference that survives several decodings is worth a listen; one that flips is the recognizer.* "$450" came back as "$450,000" when the same chunk held "$52,000", and as "$450" in five of six decodings with other boundaries. One word decoded six ways came back as the script's "competence" twice and as "confidence" four times. Names came back in a different spelling on each pass.
+7. *Mastering.* After leveling, the noise floor was between −57.5 and −59.8 dB in every recording, so all six got the gentle noise reduction.
+8. *Joins.* Of 101 joins in the six final edits, 99 leave and re-enter the recording within 15 dB of the noise floor. The other two are retimed pauses that sit in a soft breath at about −45 dB.
+
+**What changed.**
+
+- `asr.py`: sound within 25 dB of the voice's level for 0.15 seconds or more, peaking within 15 dB of it, is added to the detector's stretches (`add_missed_speech`). A stretch that comes back without words from its chunk is decoded again on its own. The transcript cache key carries a version, so transcripts made before a change like this are not reused.
+- `edit.py`: an unscripted word or two at the edge of a line is kept when it follows or leads into the kept word beside it within 0.25 seconds (`adlib` under `[pauses]`). An aside or a stray sound that stands apart is still cut. Comps can be turned off (`comps = false`, `--no-comps`).
+- `text.py`: currency amounts are set off from the word before them, dashes and other non-ASCII punctuation separate words instead of joining them, and "percent" is always two tokens. From the same day's run of the whole script through the parser: clock times are read the way they're said ("8:00 a.m." is "eight a.m."), letters that Unicode normalization drops (Þ, ø, ß and others) are transliterated, and Markdown comments that span several lines are skipped.
+- Tests went from 16 to 25, none needing the speech models. The six edits came out identical before and after the parser changes were merged in.
+
+**Still open.** A cough or throat-clear between two kept sentences would stay in the edit unreported (see Limits). None of the six had one: every voice-level sound without words was before the first line, after the last, or between a cut take and its re-read.
+
+### 2026-10-07: first release
+
+An 18.6-minute chapter read (44.1 kHz MP3, 21 restarts): 121 of 121 lines found, 274 words of false starts and asides removed, one two-take splice, 15.4 minutes out, and no restarts left on `verify`. A test pickups file replaced two of the six flagged lines. A 56-minute 48 kHz WAV ran in 8.3 minutes on two cores. Timings for both are under Speed and memory.
 
 ## Development
 
@@ -110,7 +188,7 @@ pip install -e ".[test]"
 pytest
 ```
 
-The tests cover script parsing, the alignment rules (restarts, fillers, asides, pickups), a full edit-and-master pass on synthetic audio, and the command line, including which chapters `batch` skips. They don't need the speech models.
+The tests cover script parsing, the alignment rules (restarts, fillers, asides, pickups), the check for speech the voice detector missed, a full edit-and-master pass on synthetic audio (including ad-libs at the edge of a line and the comps switch), and the command line, including which chapters `batch` skips. They don't need the speech models.
 
 ## Credits
 

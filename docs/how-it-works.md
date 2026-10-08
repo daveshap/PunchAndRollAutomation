@@ -6,11 +6,16 @@
 
 Silero VAD finds the stretches of speech. Neighboring stretches are grouped into chunks of up to 20 seconds, because a short phrase decoded on its own can come back empty while the same words decoded with their neighbors don't. Each chunk is transcribed by NVIDIA Parakeet TDT 0.6B v2 (int8 ONNX, through sherpa-onnx), which gives a timestamp for every token. Tokens are joined into words; punctuation is attached to a word without stretching its end time.
 
+The editor treats whatever lies between two recognized words as a pause and keeps it, so speech that goes unheard would stay in the edit. Two checks guard against that:
+
+- **Sound the detector left out.** The detector sometimes starts a stretch late, ends one early, or misses a short phrase or a muttered aside between two pauses. Any sound that stays within 25 dB of the voice's level for 0.15 seconds or more, and comes within 15 dB of it, is added to the detector's stretches. Breaths and clicks fall short of that. In a room too noisy to tell the voice from the background by level, the detector's stretches are used as they are.
+- **A stretch that comes back empty.** The recognizer can drop a short stretch at the end of a long chunk. A stretch with no words is decoded again on its own.
+
 Every finished chunk is written to the transcript cache immediately, so an interrupted run resumes where it stopped, and a finished transcript is reused whenever the same recording is edited again.
 
 ## 2. Align, allowing restarts
 
-Script and transcript are reduced to the same tokens: lowercase, accents removed, numbers spelled out the way they're read (years, decades, ordinals, percentages, money, clock times). Compounds are reconciled in both directions ("ChatGPT" vs "chat GPT", "cow paths" vs "cowpaths").
+Script and transcript are reduced to the same tokens: lowercase, accents removed, dashes and other punctuation treated as spaces, numbers spelled out the way they're read (years, decades, ordinals, percentages, money, clock times). Compounds are reconciled in both directions ("ChatGPT" vs "chat GPT", "cow paths" vs "cowpaths").
 
 The transcript is then consumed in order while a pointer moves through the script. Each move has a cost, in tenths:
 
@@ -38,9 +43,9 @@ Where a new recording starts (a pickup file, the next session), the pointer may 
 For every script word, the last spoken word aligned to it wins. Tokens it replaces are cut ("re-read later"). Then:
 
 - A misread word just before a mid-line restart, which the restart didn't re-read, is dropped: it's what the reader stopped to fix.
-- Inserted words are kept only as short ad-libs (one or two words) inside a kept stretch of a single line. Fillers, asides between lines, and anything outside the text are cut.
+- Inserted words are kept only as short ad-libs (one or two words): inside a kept stretch of a single line, or at the edge of a line when they run straight on from the kept word beside them, with less than 0.25 seconds between ("until they were cheap enough.", "And groceries don't fall."). Cutting those would mean cutting where there is no pause. Fillers, asides that stand apart between lines, and anything outside the text are cut.
 
-**Comps.** If the last take of a line still differs from the script and an earlier take read that part correctly, the line is assembled from the two, split at a word boundary where both takes had a natural pause of at least 0.12 seconds. It's used only when it reduces the number of real differences.
+**Comps.** If the last take of a line still differs from the script and an earlier take read that part correctly, the line is assembled from the two, split at a word boundary where both takes had a natural pause of at least 0.12 seconds. It's used only when it reduces the number of real differences. If you reword lines on purpose as you read, turn comps off (`--no-comps`, or `comps = false` in the settings): the last take of every line is then kept whole, and the rewording is only listed in the report.
 
 ## 4. Rebuild the pauses
 

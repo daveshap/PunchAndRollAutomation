@@ -47,8 +47,8 @@ def spoken_numbers(text: str) -> str:
     text = re.sub(r"\b(1[1-9][0-9]{2}|20[0-9]{2})\b(?![.,]\d)",
                   lambda m: num2words(int(m.group(1)), to="year"), text)
     text = re.sub(r"(\d[\d,]*(?:\.\d+)?)\s?%", lambda m: _num(m.group(1)) + " percent", text)
-    text = re.sub(r"([$€£])(\d[\d,]*(?:\.\d+)?)(?:\s*(thousand|million|billion|trillion))?",
-                  lambda m: f"{_num(m.group(2))} {m.group(3) or ''} {_CURRENCY[m.group(1)]}", text)
+    text = re.sub(r"([$€£])(\d[\d,]*(?:\.\d+)?)(?:\s*(thousand|million|billion|trillion))?",   # heard as "is$450": pad it
+                  lambda m: f" {_num(m.group(2))} {m.group(3) or ''} {_CURRENCY[m.group(1)]} ", text)
     text = re.sub(r"\d[\d,]*(?:\.\d+)?", lambda m: _num(m.group(0)), text)
     return text
 
@@ -67,8 +67,11 @@ def toks(text: str) -> list[str]:
     """Lowercase word tokens with numbers spelled out; used for both script and transcript."""
     text = text.replace("’", "'").replace("‘", "'").replace("&", " and ").translate(_TRANSLIT)
     text = spoken_numbers(text)
-    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+    # accents come off their letters; dashes, bullets, and curly quotes separate words instead of joining them
+    text = "".join(c if c.isascii() else "" if unicodedata.category(c)[0] in "LM" else " "
+                   for c in unicodedata.normalize("NFKD", text)).lower()
     text = re.sub(r"[-/]", " ", text)
+    text = re.sub(r"\bpercent\b", "per cent", text)       # the recognizer writes it both ways, a word at a time
     return [w.strip("'") for w in re.sub(r"[^a-z0-9' ]+", " ", text).split() if w.strip("'")]
 
 

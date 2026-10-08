@@ -3,6 +3,7 @@
 
 threads = 0            # speech recognition threads; 0 picks automatically
 level_match = true     # match later recordings' speech level to the first file
+comps = true           # splice an earlier take over a slip in the last one; false keeps the last take whole
 
 [pauses]               # seconds; [min, max] keeps a natural pause in range, a third value is the rebuilt length
 head = 1.5             # room tone before the first word (ACX: 1 to 5 s)
@@ -15,6 +16,7 @@ heading_to_heading = [1.00, 2.00, 1.50]
 before_heading = [1.80, 3.00, 2.20]
 cut_sentence = [0.55, 0.90]               # rebuilt pause between sentences where a take was cut
 cut_within = [0.12, 0.45]                 # rebuilt pause inside a sentence where a take was cut
+adlib = 0.25                              # an unscripted word at a line's edge is kept if it runs on within this
 tolerance_short = 0.08                    # leave a pause alone this close to the minimum
 tolerance_long = 0.15                     # ... or this close to the maximum
 
