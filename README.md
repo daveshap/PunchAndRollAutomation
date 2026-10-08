@@ -68,7 +68,7 @@ Run it again after every recording session. Chapters that are already edited are
 
 - Markdown, plain text, or Word (`.docx`, using heading styles for headings).
 - It should contain exactly what you say aloud, headings included: "Chapter One", "Part One", the chapter title. Words you say that aren't in the script are treated as asides and cut, and script lines you didn't read are reported.
-- Footnote markers and footnote text, tables, images, code blocks, and links are cleaned out automatically. Numbers are compared the way they're spoken ("1810s" matches "eighteen tens", "$52,000" matches "fifty-two thousand dollars").
+- Footnote markers and footnote text, tables, images, code blocks, links, and `<!-- comments -->` are cleaned out automatically. Numbers are compared the way they're spoken ("1810s" matches "eighteen tens", "$52,000" matches "fifty-two thousand dollars", "8:00 a.m." matches "eight a.m.").
 - Select a chapter with `--from` and `--to` (text from its headings) or `--lines 115-143`.
 
 To make a narration script from a Word manuscript: `pandoc manuscript.docx -t markdown --wrap=none -o narration.md`, then edit it to match what you'll say.

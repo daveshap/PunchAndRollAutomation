@@ -9,9 +9,15 @@ def test_numbers_are_spoken():
     assert toks("in the '90s") == ["in", "the", "nineties"]
 
 
+def test_clock_times():
+    assert toks("At 8:00 a.m. and 6:05 p.m.") == ["at", "eight", "a", "m", "and", "six", "oh", "five", "p", "m"]
+    assert toks("They vote at 4:45.") == ["they", "vote", "at", "four", "forty", "five"]
+
+
 def test_text_cleanup():
     assert toks("Mondragón’s café & bar") == ["mondragon's", "cafe", "and", "bar"]
     assert toks("post-labor, self-government") == ["post", "labor", "self", "government"]
+    assert toks("Þingvellir, Søren, Straße") == ["thingvellir", "soren", "strasse"]
 
 
 def test_sentence_split_keeps_abbreviations():
@@ -47,6 +53,11 @@ code
     assert ("heading", "Section Two") in blocks
     assert ("body", "A list item.") in blocks
     assert not any("footnote" in t or "code" in t for _, t in blocks)
+
+
+def test_markdown_comments_are_not_read():
+    md = "<!-- a note\nthat spans lines -->\n# Title\n\n<!-- one line -->\nBody text.\n"
+    assert _markdown_blocks(md.splitlines()) == [("heading", "Title"), ("body", "Body text.")]
 
 
 def test_select_section_and_lines():

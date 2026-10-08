@@ -10,7 +10,7 @@ Every finished chunk is written to the transcript cache immediately, so an inter
 
 ## 2. Align, allowing restarts
 
-Script and transcript are reduced to the same tokens: lowercase, accents removed, numbers spelled out the way they're read (years, decades, ordinals, percentages, money). Compounds are reconciled in both directions ("ChatGPT" vs "chat GPT", "cow paths" vs "cowpaths").
+Script and transcript are reduced to the same tokens: lowercase, accents removed, numbers spelled out the way they're read (years, decades, ordinals, percentages, money, clock times). Compounds are reconciled in both directions ("ChatGPT" vs "chat GPT", "cow paths" vs "cowpaths").
 
 The transcript is then consumed in order while a pointer moves through the script. Each move has a cost, in tenths:
 
