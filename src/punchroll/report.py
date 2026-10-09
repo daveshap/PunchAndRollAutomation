@@ -59,14 +59,16 @@ def write_reports(out_dir: Path, name: str, res: dict, takes, metrics: dict | No
         mp3 = metrics.get("mp3_true_peak_db")
         in_mp3 = f", and {mp3} dB in the MP3" if mp3 is not None else ""
         wav = f"{metrics['wav_bits']}-bit WAV and a " if metrics.get("wav_bits") else ""
+        quieter = (f"Noise reduction: the room's noise turned down by {metrics['noise_reduction_db']:g} dB, "
+                   "set in [master]. ") if metrics.get("noise_reduction_db") else ""
         md += ["## ACX check", "",
                "| Measure | Value | ACX range | |", "|---|---|---|---|",
                f"| RMS loudness | {metrics['rms_db']} dB | −23 to −18 dB | {_ok(metrics['rms_ok'])} |",
                f"| True peak | {metrics['true_peak_db']} dB{in_mp3} (highest sample {metrics['sample_peak_db']} dB) "
                f"| −3 dB or lower | {_ok(metrics['peak_ok'])} |",
                f"| Noise floor | {metrics['noise_floor_db']} dB | below −60 dB | {_ok(metrics['noise_ok'])} |",
-               "", "Room tone: 1–5 s at the head and tail, set in [pauses] head/tail. "
-               f"Export: {wav}44.1 kHz mono MP3, constant bit rate.", ""]
+               "", "Room tone: 1–5 s at the head and tail, set in [pauses] head/tail. " + quieter
+               + f"Export: {wav}44.1 kHz mono MP3, constant bit rate.", ""]
     md += ["## Pickups", ""]
     if res["pickups"]:
         md += ["Lines whose kept reading still differs from the script. Check by ear; the recognizer can mishear too.", "",

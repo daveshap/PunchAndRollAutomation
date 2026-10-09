@@ -67,8 +67,12 @@ class MasterSettings:
     highpass_hz: float = 70.0
     compressor_threshold_db: float = -26.0
     compressor_ratio: float = 2.0
-    denoise_above_db: float = -62.0    # run gentle noise reduction only if the floor is above this
-    wav_bits: int = 0                  # WAV master: 0 = the recording's own depth (16 to 24 bits), or 16, or 24
+    noise_reduction: str = "auto"      # "auto": only if the noise floor would end above denoise_above_db; "on"; "off"
+    noise_reduction_db: float = 12.0   # how far the room's noise is turned down
+    noise_sensitivity: float = 6.0     # how far over the noise a sound must rise to be left alone (Audacity's scale)
+    noise_smoothing: int = 3           # bands on either side that share each band's gain (Audacity's frequency smoothing)
+    denoise_above_db: float = -62.0    # "auto" steps in when the floor would be above this
+    wav_bits: int = 0                 # WAV master: 0 = the recording's own depth (16 to 24 bits), or 16, or 24
     mp3_kbps: int = 192                # ACX: 192 kbps or higher, constant bit rate
     mp3_sample_rate: int = 44100       # ACX: 44.1 kHz
 
@@ -105,4 +109,7 @@ def load_settings(path: str | os.PathLike | None = None) -> Settings:
     for k in ("threads", "level_match", "comps"):
         if k in data:
             setattr(s, k, data[k])
+    s.master.noise_reduction = {True: "on", False: "off"}.get(s.master.noise_reduction, s.master.noise_reduction)
+    if s.master.noise_reduction not in ("auto", "on", "off"):
+        raise ValueError('[master] noise_reduction must be "auto", "on", or "off"')
     return s

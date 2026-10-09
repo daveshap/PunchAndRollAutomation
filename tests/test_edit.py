@@ -69,7 +69,7 @@ def test_restart_is_removed_and_order_kept():
     # the abandoned start (about 1.5 s) is gone; 1.5 s of head and 3 s of tail room tone are added
     assert len(res["audio"]) < len(x) + 2.5 * SR
 
-    y, m = master(res["audio"], SR, Settings().master, res["room_tone"], log=lambda *a: None)
+    y, m = master(res["audio"], SR, Settings().master, log=lambda *a: None)
     assert abs(m["rms_db"] + 20) < 0.3
     assert m["true_peak_db"] < -3
 

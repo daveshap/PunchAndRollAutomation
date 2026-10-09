@@ -398,7 +398,7 @@ def build_edit(x: np.ndarray, sr: int, words: list[dict], lines: list[Line], set
                                                   "delete": f"missing '{d['book']}'",
                                                   "insert": f"added '{d['read']}'"}[d["type"]] for d in major)})
     return {
-        "audio": y, "room_tone": tone(2 * sr), "sr": sr,
+        "audio": y, "sr": sr,
         "summary": {
             "raw_minutes": round(dur / 60, 2), "edited_minutes": round(len(y) / sr / 60, 2),
             "lines": len(lines), "lines_found": sum(1 for r in readings if r),

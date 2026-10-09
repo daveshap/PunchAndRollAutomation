@@ -93,7 +93,7 @@ def clean(audio_paths, script, out_dir, name=None, start=None, end=None, line_ra
     metrics = None
     if not report_only:
         log("Mastering ...")
-        y, metrics = master(res.pop("audio"), sr, settings.master, res["room_tone"], log)
+        y, metrics = master(res.pop("audio"), sr, settings.master, log)
         subtype = wav_subtype(audio_paths, settings.master.wav_bits)
         write_wav(out / f"{name}.wav", y, sr, subtype)
         metrics["wav_bits"] = int(subtype[-2:])

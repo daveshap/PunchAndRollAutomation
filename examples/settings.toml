@@ -26,8 +26,12 @@ limiter_ceiling_db = -3.5    # true-peak ceiling for the WAV and the MP3; ACX's 
 highpass_hz = 70.0
 compressor_threshold_db = -26.0
 compressor_ratio = 2.0
-denoise_above_db = -62.0     # gentle noise reduction only if the floor is above this
-wav_bits = 0                 # WAV master: 0 = the recording's own bit depth (16 at least, 24 at most), or 16, or 24
+noise_reduction = "auto"     # "auto": only when the noise floor would end above denoise_above_db; "on": always; "off": never
+noise_reduction_db = 12.0    # how far the room's noise is turned down (Audacity: "Noise reduction (dB)")
+noise_sensitivity = 6.0      # how far over the noise a sound must rise to be left alone (Audacity: "Sensitivity")
+noise_smoothing = 3          # bands on either side that share each band's gain (Audacity: "Frequency smoothing (bands)")
+denoise_above_db = -62.0     # "auto" steps in when the floor would be above this
+wav_bits = 0                # WAV master: 0 = the recording's own bit depth (16 at least, 24 at most), or 16, or 24
 mp3_kbps = 192               # ACX: 192 kbps or more, constant bit rate
 mp3_sample_rate = 44100      # ACX: 44.1 kHz
 
