@@ -191,24 +191,30 @@ def _encode_mp3(path: str | Path, z: np.ndarray, kbps: int, out_sr: int) -> None
                         "-b:a", f"{kbps}k", str(path)], check=True)
 
 
-def true_abs(y: np.ndarray, block: int = 1 << 20) -> np.ndarray:
-    """|y| with the waveform's level between samples counted in (4x oversampled): one value per sample."""
-    out, pad = np.empty(len(y), dtype=np.float32), 64
+def _true_abs_blocks(y: np.ndarray, block: int):
+    """Block by block: |y| with the waveform's level between samples counted in (4x oversampled), one value per sample.
+
+    Each block is resampled together with 64 samples of its neighbours and only its own part is kept: the
+    resampler rings where its input is cut off, and in loud audio that ringing reads as a peak that isn't there.
+    """
+    pad = 64
     for a in range(0, len(y), block):
         lo, n = max(0, a - pad), min(block, len(y) - a)
         o = np.abs(resample_poly(y[lo:min(len(y), a + block + pad)].astype(np.float64), 4, 1))
-        out[a:a + n] = o.reshape(-1, 4).max(axis=1)[a - lo:a - lo + n]
+        yield a, o.reshape(-1, 4).max(axis=1)[a - lo:a - lo + n]
+
+
+def true_abs(y: np.ndarray, block: int = 1 << 20) -> np.ndarray:
+    """|y| with the waveform's level between samples counted in: one value per sample."""
+    out = np.empty(len(y), dtype=np.float32)
+    for a, m in _true_abs_blocks(y, block):
+        out[a:a + len(m)] = m
     return out
 
 
 def true_peak_db(y: np.ndarray, block: int = 1 << 20) -> float:
     """Peak of the 4x oversampled signal, computed in blocks to keep memory flat."""
-    peak, pad = 0.0, 64
-    for a in range(0, len(y), block):
-        seg = y[max(0, a - pad):min(len(y), a + block + pad)].astype(np.float64)
-        if len(seg) < 8:
-            continue
-        peak = max(peak, float(np.max(np.abs(resample_poly(seg, 4, 1)))))
+    peak = max((float(m.max()) for _, m in _true_abs_blocks(y, block)), default=0.0)
     return 20 * np.log10(peak + 1e-12)
 
 
