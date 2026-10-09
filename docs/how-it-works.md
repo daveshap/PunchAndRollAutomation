@@ -78,10 +78,12 @@ Room tone is taken from the recording itself: half-second stretches with no spee
 1. Normalize to −22 dB RMS.
 2. Second-order high-pass at 70 Hz.
 3. Compressor: RMS detector on 10 ms windows, −26 dB threshold, 2:1, 10 ms attack, 150 ms release.
-4. Look-ahead limiter (6 ms) at a −3.6 dB sample-peak ceiling, with the gain searched so the result lands at −20 dB RMS. Processed in blocks, so memory stays flat.
+4. Look-ahead limiter (6 ms) with a true-peak ceiling of −3.5 dB, and the gain searched so the result lands at −20 dB RMS. The limiter works from the waveform's level between samples (4x oversampled), not from the samples alone: on a bright or sibilant voice the two differ by 2 dB or more, and a limiter that only watches samples lets the true peak through. ACX's limit is −3 dB; the half decibel is room for their meter to read a little higher than this one.
 5. If the noise floor (quietest half second) is still above −62 dB, gentle stationary noise reduction using the room tone as the noise profile, then re-level.
 
-The true peak (4x oversampled) is measured and reported, along with RMS and noise floor against ACX's limits.
+The WAV master is written at the bit depth the recording came in at (16 bits at least, 24 at most; 16-bit output is dithered). The MP3 is resampled to 44.1 kHz if needed and encoded, then decoded again and measured: if resampling or the encoder pushed its true peak over the ceiling, it is encoded again slightly lower.
+
+RMS, true peak (of the WAV and of the MP3), and noise floor are reported against ACX's limits. The peak passes on the true peak, not on the highest sample.
 
 ## 6. Report and verify
 

@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from .asr import Recognizer, cached_words, transcribe
-from .audio import load_takes, write_mp3, write_wav
+from .audio import load_takes, wav_subtype, write_mp3, write_wav
 from .config import Settings, auto_threads
 from .edit import build_edit
 from .master import master
@@ -94,11 +94,17 @@ def clean(audio_paths, script, out_dir, name=None, start=None, end=None, line_ra
     if not report_only:
         log("Mastering ...")
         y, metrics = master(res.pop("audio"), sr, settings.master, res["room_tone"], log)
-        write_wav(out / f"{name}.wav", y, sr)
+        subtype = wav_subtype(audio_paths, settings.master.wav_bits)
+        write_wav(out / f"{name}.wav", y, sr, subtype)
+        metrics["wav_bits"] = int(subtype[-2:])
         if mp3:
-            write_mp3(out / f"{name}.mp3", y, sr, settings.master.mp3_kbps, settings.master.mp3_sample_rate)
-        log(f"  RMS {metrics['rms_db']} dB, true peak {metrics['true_peak_db']} dB, "
-            f"noise floor {metrics['noise_floor_db']} dB")
+            tp = write_mp3(out / f"{name}.mp3", y, sr, settings.master.mp3_kbps, settings.master.mp3_sample_rate,
+                           settings.master.limiter_ceiling_db)
+            metrics["mp3_true_peak_db"] = None if tp is None else round(tp, 2)
+            metrics["peak_ok"] = bool(metrics["peak_ok"] and (tp is None or tp <= -3))
+        log(f"  RMS {metrics['rms_db']} dB, true peak {metrics['true_peak_db']} dB"
+            + (f" (MP3 {metrics['mp3_true_peak_db']} dB)" if metrics.get("mp3_true_peak_db") is not None else "")
+            + f", noise floor {metrics['noise_floor_db']} dB")
     data = write_reports(out, name, res, takes, metrics, desc)
     log(f"Done in {(time.time() - t0) / 60:.1f} min: {s['raw_minutes']:.1f} min recorded -> "
         f"{s['edited_minutes']:.1f} min edited, {len(res['pickups'])} line(s) to check. "

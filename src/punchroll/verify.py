@@ -72,7 +72,7 @@ def verify_markdown(v: dict) -> str:
           f"Duration {v['duration']} · words heard {v['words_heard']} · restarts left {v['restarts_left']}", "",
           "## ACX", "", "| Measure | Value | Target |", "|---|---|---|",
           f"| RMS loudness | {a['rms_db']} dB | −23 to −18 dB |",
-          f"| Peak | {a['sample_peak_db']} dB (true peak {a['true_peak_db']} dB) | below −3 dB |",
+          f"| True peak | {a['true_peak_db']} dB (highest sample {a['sample_peak_db']} dB) | −3 dB or lower |",
           f"| Noise floor | {a['noise_floor_db']} dB | below −60 dB |",
           f"| Room tone at head / tail | {a['head_s']} s / {a['tail_s']} s | 1 to 5 s |",
           f"| Format | {a['format']}, {a['sample_rate']} Hz, {a['channels']} channel(s), about {a['approx_kbps']} kbps | MP3, 44,100 Hz, 192 kbps CBR, mono |",

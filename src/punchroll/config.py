@@ -63,11 +63,12 @@ class PauseSettings:
 @dataclass
 class MasterSettings:
     rms_db: float = -20.0              # ACX: -23 to -18 dB RMS
-    limiter_ceiling_db: float = -3.6   # sample-peak ceiling; true peak lands under -3 dB
+    limiter_ceiling_db: float = -3.5   # true-peak ceiling; ACX's limit is -3 dB, the rest is room for their meter
     highpass_hz: float = 70.0
     compressor_threshold_db: float = -26.0
     compressor_ratio: float = 2.0
     denoise_above_db: float = -62.0    # run gentle noise reduction only if the floor is above this
+    wav_bits: int = 0                  # WAV master: 0 = the recording's own depth (16 to 24 bits), or 16, or 24
     mp3_kbps: int = 192                # ACX: 192 kbps or higher, constant bit rate
     mp3_sample_rate: int = 44100       # ACX: 44.1 kHz
 

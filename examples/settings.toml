@@ -22,11 +22,12 @@ tolerance_long = 0.15                     # ... or this close to the maximum
 
 [master]
 rms_db = -20.0               # ACX: -23 to -18 dB RMS
-limiter_ceiling_db = -3.6    # sample peak ceiling; true peak lands under -3 dB
+limiter_ceiling_db = -3.5    # true-peak ceiling for the WAV and the MP3; ACX's limit is -3 dB, the rest is room for their meter
 highpass_hz = 70.0
 compressor_threshold_db = -26.0
 compressor_ratio = 2.0
 denoise_above_db = -62.0     # gentle noise reduction only if the floor is above this
+wav_bits = 0                 # WAV master: 0 = the recording's own bit depth (16 at least, 24 at most), or 16, or 24
 mp3_kbps = 192               # ACX: 192 kbps or more, constant bit rate
 mp3_sample_rate = 44100      # ACX: 44.1 kHz
 

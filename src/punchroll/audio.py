@@ -112,10 +112,27 @@ def load_takes(paths: list[str], level_match: bool = True, gap_s: float = 1.0, l
     return (xs[0] if len(xs) == 1 else np.concatenate(xs)), sr0, takes
 
 
-def write_wav(path: str | Path, y: np.ndarray, sr: int) -> None:
-    with sf.SoundFile(str(path), "w", sr, 1, subtype="PCM_24") as f:
+def wav_subtype(paths, bits: int = 0) -> str:
+    """Bit depth for the WAV master: what the recordings came in at, never under 16 bits or over 24."""
+    if bits:
+        return "PCM_16" if bits <= 16 else "PCM_24"
+    deep = False
+    for p in paths:
+        try:
+            deep |= sf.info(str(p)).subtype in ("PCM_24", "PCM_32", "FLOAT", "DOUBLE")
+        except Exception:                               # a format only ffmpeg reads: treat as 16-bit
+            pass
+    return "PCM_24" if deep else "PCM_16"
+
+
+def write_wav(path: str | Path, y: np.ndarray, sr: int, subtype: str = "PCM_24") -> None:
+    rng = np.random.default_rng(0)
+    with sf.SoundFile(str(path), "w", sr, 1, subtype=subtype) as f:
         for a in range(0, len(y), BLOCK):
-            f.write(np.clip(y[a:a + BLOCK], -1, 1).astype(np.float32))
+            z = y[a:a + BLOCK].astype(np.float32)
+            if subtype == "PCM_16":                     # triangular dither, one step wide, before rounding to 16 bits
+                z += (rng.random(len(z), dtype=np.float32) - rng.random(len(z), dtype=np.float32)) / 32768
+            f.write(np.clip(z, -1, 1))
 
 
 def _pcm16(z: np.ndarray):
@@ -123,9 +140,31 @@ def _pcm16(z: np.ndarray):
         yield (np.clip(z[a:a + BLOCK], -1, 1) * 32767).astype("<i2")
 
 
-def write_mp3(path: str | Path, y: np.ndarray, sr: int, kbps: int = 192, out_sr: int = 44100) -> None:
-    """Constant-bit-rate mono MP3 (ACX wants 192 kbps or more, 44.1 kHz)."""
+def write_mp3(path: str | Path, y: np.ndarray, sr: int, kbps: int = 192, out_sr: int = 44100,
+              ceiling_db: float | None = None) -> float | None:
+    """Constant-bit-rate mono MP3 (ACX wants 192 kbps or more, 44.1 kHz).
+
+    With a ceiling, the encoded file is decoded and measured, and encoded again a little lower if
+    resampling or the encoder pushed its true peak over. Returns the MP3's true peak, or None if
+    it wasn't measured.
+    """
     z = resample(y, sr, out_sr)
+    tp = None
+    for _ in range(3):
+        _encode_mp3(path, z, kbps, out_sr)
+        if ceiling_db is None:
+            return None
+        try:
+            tp = true_peak_db(read_mono(path)[0])
+        except Exception:                               # nothing here can decode MP3: leave it unmeasured
+            return None
+        if tp <= ceiling_db:
+            break
+        z = z * np.float32(10 ** ((ceiling_db - tp - 0.05) / 20))
+    return tp
+
+
+def _encode_mp3(path: str | Path, z: np.ndarray, kbps: int, out_sr: int) -> None:
     try:
         import lameenc
     except ImportError:
@@ -150,6 +189,16 @@ def write_mp3(path: str | Path, y: np.ndarray, sr: int, kbps: int = 192, out_sr:
                 f.write(pcm)
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(tmp), "-c:a", "libmp3lame",
                         "-b:a", f"{kbps}k", str(path)], check=True)
+
+
+def true_abs(y: np.ndarray, block: int = 1 << 20) -> np.ndarray:
+    """|y| with the waveform's level between samples counted in (4x oversampled): one value per sample."""
+    out, pad = np.empty(len(y), dtype=np.float32), 64
+    for a in range(0, len(y), block):
+        lo, n = max(0, a - pad), min(block, len(y) - a)
+        o = np.abs(resample_poly(y[lo:min(len(y), a + block + pad)].astype(np.float64), 4, 1))
+        out[a:a + n] = o.reshape(-1, 4).max(axis=1)[a - lo:a - lo + n]
+    return out
 
 
 def true_peak_db(y: np.ndarray, block: int = 1 << 20) -> float:
