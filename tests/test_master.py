@@ -2,11 +2,31 @@
 import numpy as np
 import soundfile as sf
 
-from punchroll.audio import read_mono, wav_subtype, write_mp3, write_wav
+from punchroll.audio import read_mono, true_peak_db, wav_subtype, write_mp3, write_wav
 from punchroll.config import Settings
 from punchroll.master import master
 
 SR = 44100
+
+
+def test_true_peak_reads_the_same_wherever_the_blocks_fall():
+    y = (0.5 * np.sin(2 * np.pi * 997 * np.arange(60000) / SR)).astype(np.float32)
+    whole = true_peak_db(y)
+    assert abs(whole - 20 * np.log10(0.5)) < 0.02
+    for block in (1000, 4096, 9973):                               # a block edge inside loud audio once read as a peak
+        assert abs(true_peak_db(y, block) - whole) < 0.01
+
+
+def test_loudness_is_kept_when_a_block_edge_lands_on_a_peak():
+    rng = np.random.default_rng(5)
+    n = (1 << 20) + 60000                                          # the levelling works in blocks of 2**20 samples
+    t = np.arange(n) / SR
+    y = 0.02 * np.sin(2 * np.pi * 150 * t)
+    edge = (1 << 20) - 64                                          # where the meter's second block starts reading
+    for a in list(range(20000, n - 3000, 60000)) + [edge - 1000]:  # short loud syllables, one cresting right there
+        y[a:a + 2000] += 0.5 * np.cos(2 * np.pi * 310 * (np.arange(a, a + 2000) - edge) / SR) * np.hanning(2000)
+    out, m = master((y + rng.normal(0, 1e-4, n)).astype(np.float32), SR, Settings().master)
+    assert abs(m["rms_db"] + 20) < 0.1 and abs(m["true_peak_db"] + 3.5) < 0.05
 
 
 def bright_voice(seconds=20, seed=3):

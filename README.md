@@ -140,6 +140,14 @@ Nothing in the pipeline calls an AI service. If you'd like Claude to run it for 
 
 Notes from real sessions: what was run, what it showed, and what changed in the code because of it. Newest first.
 
+### 2026-10-09: the true-peak meter at block edges
+
+**What it showed.** The change below made the limiter and the MP3 check act on the true-peak reading, and that reading had a flaw of its own, there since the first release. The meter resamples the file in blocks of about 24 seconds, each with a little of its neighbours for context, and it took its maximum over the context as well. The resampler rings where its input is cut off, so when a block edge fell on a loud moment the ringing read as a peak up to 1 dB over the real one. While the figure was only printed, the cost was an occasional pessimistic number. Once it steered the level, one master came out at −20.7 dB RMS instead of −20.0, and its MP3 0.9 dB lower than it had to be.
+
+**How it was found.** By mastering the same recording a second time for another experiment and getting a different loudness. No test had caught it because none of their signals was longer than one block.
+
+**What changed.** The meter keeps only each block's own part. Two tests cover it: the reading must not depend on where the blocks fall, and a recording with a loud syllable cresting exactly where a block begins must still master to −20 dB RMS. Both fail with the previous meter. 32 tests.
+
 ### 2026-10-08, third entry: an engineer's test on other narrators' audio
 
 **The job.** An audiobook engineer who masters for ACX every day ran the tool on his own material: an 800-page manuscript marked up as Markdown, chapters picked out with `--from "Chapter 99" --to "Chapter 100"`, and a batch on a laptop at 13.7 times real time. It found the one pickup he already knew was in a chapter, and he put its false positives (names, the odd misheard word) level with a paid proofing service's.
