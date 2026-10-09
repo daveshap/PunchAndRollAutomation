@@ -17,13 +17,59 @@ from collections import defaultdict
 import numpy as np
 from scipy.ndimage import binary_closing
 
-from .align import FILLERS, Aligner, harmonize, last_take, near
+from .align import FILLERS, SOUND, Aligner, harmonize, last_take, near
 from .audio import frame_db, rms_db
 from .config import Settings
 from .text import Line, toks
 
 ARTICLES = {"a", "an", "the", "this", "that", "these", "those"}
 SMALL = ARTICLES | {"and"}
+
+
+def stray_sounds(x: np.ndarray, sr: int, words: list[dict]) -> list[dict]:
+    """Sound at the voice's level that no recognized word covers, as entries shaped like the recognizer's words.
+
+    The editor keeps whatever lies between two recognized words as a pause. The recognizer smooths
+    over a cut-off syllable ("Th- The easy things...") and has no word for a bump or a cough, so
+    those would stay in. Any sound that stays within 25 dB of the voice for 0.1 s or more, comes
+    within 15 dB of it, and touches no word (each word's time widened by 0.08 s) gets an entry with
+    the text SOUND. In the alignment it is one more thing the script doesn't have and is cut as a
+    filler is, unless the script has a word there that nothing else was heard for: then it stands
+    as that word, and the report says so.
+
+    A word whose own reported time holds no sound has had its time misplaced, and the nearest
+    sound is probably that word, so sound within 0.35 s of such a word is left alone.
+    """
+    if not words:
+        return []
+    db, hop = frame_db(x, sr, 0.01)
+    step = hop / sr
+
+    def frames(a, b):
+        return max(0, int(a / step)), min(len(db), int(b / step) + 1)
+
+    covered = np.zeros(len(db), bool)
+    for w in words:
+        a, b = frames(w["start"] - 0.08, w["end"] + 0.08)
+        covered[a:b] = True
+    rest = db[~covered & (db > -90)]
+    if not covered.any() or not len(rest):
+        return []
+    level, floor = float(np.percentile(db[covered], 90)), float(np.percentile(rest, 20))
+    gate = max(level - 25, floor + 12)
+    if gate > level - 10:                              # too noisy to tell the voice from the room by level
+        return []
+    loud = db > gate
+    hollow = [w for w in words if not loud[slice(*frames(w["start"] - 0.08, w["end"] + 0.08))].any()]
+    d = np.diff(np.concatenate([[0], binary_closing(loud, structure=np.ones(7, bool)).astype(np.int8), [0]]))
+    out = []
+    for s, e in zip(np.flatnonzero(d == 1), np.flatnonzero(d == -1)):   # runs of sound, dips under 70 ms bridged
+        t0, t1 = s * step, e * step
+        if (e - s < 10 or db[s:e].max() < level - 15 or covered[s:e].any()
+                or any(t0 - 0.35 <= w["start"] <= t1 + 0.35 for w in hollow)):
+            continue
+        out.append({"text": SOUND, "start": round(float(t0), 3), "end": round(float(t1), 3)})
+    return out
 
 
 def diffs(book: list[str], read: list[str]) -> list[dict]:
@@ -55,9 +101,10 @@ def build_edit(x: np.ndarray, sr: int, words: list[dict], lines: list[Line], set
     dur = len(x) / sr
 
     # ---- align: the last reading of every word wins
+    words = sorted(words + stray_sounds(x, sr, words), key=lambda w: w["start"])
     hyp, hyp_w = [], []
     for wi, w in enumerate(words):
-        for t in toks(w["text"]):
+        for t in [SOUND] if w["text"] == SOUND else toks(w["text"]):
             hyp.append(t)
             hyp_w.append(wi)
     if not hyp:
@@ -75,7 +122,7 @@ def build_edit(x: np.ndarray, sr: int, words: list[dict], lines: list[Line], set
         if first:
             free.append(first)
     ev, cost = Aligner(hyp, script, settings.align, free).run()
-    info = last_take(ev, hyp, sent_of)
+    info = last_take(ev, hyp, sent_of, whole=not settings.comps)
     restarts = sum(1 for e in ev if e[0] == "restart")
 
     # ---- where the voice is
@@ -83,7 +130,8 @@ def build_edit(x: np.ndarray, sr: int, words: list[dict], lines: list[Line], set
     nfr = len(e_db)
     speech = np.zeros(nfr, bool)
     for w in words:
-        speech[max(0, int((w["start"] - 0.15) * sr / hop)):int((w["end"] + 0.15) * sr / hop)] = True
+        if w["text"] != SOUND:                         # the room's level is judged as it was before stray sounds had entries
+            speech[max(0, int((w["start"] - 0.15) * sr / hop)):int((w["end"] + 0.15) * sr / hop)] = True
     quiet_db = e_db[~speech & (e_db > -90)]
     floor = float(np.percentile(quiet_db, 20)) if len(quiet_db) else -70.0
     quiet = e_db < floor + 12
@@ -404,7 +452,9 @@ def build_edit(x: np.ndarray, sr: int, words: list[dict], lines: list[Line], set
             "lines": len(lines), "lines_found": sum(1 for r in readings if r),
             "lines_with_retakes": sum(1 for v in passes.values() if len(v) > 1),
             "restarts": restarts, "comps": len(comps), "joins": joins,
-            "words_heard": len(words), "words_cut": len(words) - len(kept_w),
+            "words_heard": sum(1 for w in words if w["text"] != SOUND),
+            "words_cut": sum(1 for wi, w in enumerate(words) if w["text"] != SOUND and wi not in kept_w),
+            "stray_sounds": sum(1 for wi, w in enumerate(words) if w["text"] == SOUND and wi not in kept_w),
             "alignment_cost": cost, "raw_noise_floor_db": round(floor, 1),
         },
         "pickups": pickups, "minor": minor, "cuts": cuts, "comps": comps,

@@ -89,7 +89,8 @@ def clean(audio_paths, script, out_dir, name=None, start=None, end=None, line_ra
     gc.collect()
     s = res["summary"]
     log(f"  {s['lines_found']}/{s['lines']} lines found, {s['restarts']} restarts cut, "
-        f"{s['words_cut']} words removed, {s['comps']} two-take splices")
+        f"{s['words_cut']} words removed, {s['comps']} two-take splices"
+        + (f", {s['stray_sounds']} stray sound(s) cut" if s["stray_sounds"] else ""))
     metrics = None
     if not report_only:
         log("Mastering ...")
