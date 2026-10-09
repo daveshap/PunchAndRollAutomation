@@ -180,8 +180,8 @@ def reduce_noise(y: np.ndarray, sr: int, profile: np.ndarray, reduce_db: float =
 
     The recording is split into overlapping windows and each window into frequency bands; a band is turned
     down wherever it holds nothing more than the noise in `profile` (see noise_profile and _noise_gains).
-    The one rule runs from the first sample to the last, so a steady hum doesn't come and go with the
-    voice: it is down in every band the voice isn't using at that moment, and the voice covers it in the rest.
+    The one rule runs from the first sample to the last. A hum pitched inside the voice's range passes
+    while the voice is sounding there, covered by it, and is down by the full amount in every pause.
     """
     n = _nr_window(sr)
     if len(y) < n or reduce_db <= 0:
