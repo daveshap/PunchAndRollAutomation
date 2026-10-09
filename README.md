@@ -14,7 +14,7 @@ What running it on real recordings has turned up, and what changed in the code b
 2. **Aligns** the transcript to your narration script. Restarts, skipped text, fillers ("um", "sorry"), and asides are explicit moves in the alignment, so a repeated phrase, a retaken sentence, and a re-read paragraph are all recognized the same way. For every word of the script, the last reading wins. A word your retake leaves out stays out, so nothing from the abandoned take is set into the middle of it. A word or two you add at the edge of a line is kept when it runs straight on from the line.
 3. **Comps** where it helps: if the last take of a line has a slip that an earlier take read correctly, the two are spliced at a natural pause. If you reword lines on purpose as you read, `--no-comps` keeps your last take of every line whole.
 4. **Rebuilds the pauses.** Your own pauses and breaths are kept wherever nothing was cut and the pause is in range. Where a take was cut, or a pause is too long or too short, the gap is rebuilt from your room's own tone. Every join gets a short crossfade.
-5. **Masters to ACX**: −20 dB RMS, true peak at −3.5 dB or lower (ACX's limit is −3), noise floor below −60 dB, 1.5 s of room tone at the head and 3 s at the tail. Writes a WAV at your recording's bit depth and a 44.1 kHz mono 192 kbps constant-bit-rate MP3, and measures the MP3's own peak after encoding it.
+5. **Masters to ACX**: −20 dB RMS, true peak at −3.5 dB or lower (ACX's limit is −3), noise floor below −60 dB (with noise reduction if the room needs it, or whenever you ask for it), 1.5 s of room tone at the head and 3 s at the tail. Writes a WAV at your recording's bit depth and a 44.1 kHz mono 192 kbps constant-bit-rate MP3, and measures the MP3's own peak after encoding it.
 6. **Reports** what to re-record (pickups), every cut and why, every pause it changed, and an edit decision list.
 
 ## Install
@@ -118,6 +118,8 @@ Pause rules, loudness targets, and alignment costs can be changed with `--config
 
 For mastering, `limiter_ceiling_db` is the true-peak ceiling (−3.5 dB, half a decibel under ACX's limit) and `wav_bits` sets the WAV master's bit depth (your recording's own by default).
 
+Noise reduction is automatic unless you say otherwise: it runs only when the noise floor would end above −62 dB, and turns the room's noise down by 12 dB. `noise_reduction = "on"` runs it on every chapter and `"off"` on none. `noise_reduction_db`, `noise_sensitivity`, and `noise_smoothing` are the three numbers Audacity's Noise Reduction effect asks for and mean the same here, so settings you already trust carry over. There is no noise sample to select: it is taken from the pauses. It runs over the whole chapter by one rule, so a hum doesn't switch on and off with your voice. More in [docs/how-it-works.md](docs/how-it-works.md#5-master).
+
 Two settings decide how much of your own wording survives when you depart from the script. `comps = false` (or `--no-comps` on the command line) keeps the last take of every line whole instead of splicing in part of an earlier one. `adlib` under `[pauses]` is how closely an unscripted word must follow or lead into a line to count as part of it (0.25 seconds by default).
 
 ## Running it with an AI agent (optional)
@@ -139,6 +141,21 @@ Nothing in the pipeline calls an AI service. If you'd like Claude to run it for 
 ## Field log
 
 Notes from real sessions: what was run, what it showed, and what changed in the code because of it. Newest first.
+
+### 2026-10-09, second entry: noise reduction that doesn't come and go
+
+**What it showed.** The narrator of the ten recordings below listened to the masters and heard a low hum cutting in and out with his voice. The recordings carry a steady 120 Hz tone near −69 dB. The noise reduction then in place worked only between words, and after the compressor, so the tone was down 8 dB in the pauses and back at full level under every word. A steady hum is easy to stop hearing. One that switches is not. He ran Audacity's Noise Reduction over a recording by hand (20 dB, sensitivity 6, frequency smoothing 6) and preferred it at once: it applies one rule to the whole file.
+
+**What was tried on the way.**
+
+1. *A notch at 120 Hz, switched out whenever his voice was on that frequency.* It measured well (−67 dB to −93 dB in the pauses) and sounded worse, for the same reason: it switched.
+2. *Audacity's method with an automatic noise sample.* Set beside his own Audacity pass on the same 19-second recording, the two left the same silence to within 0.3 dB below 200 Hz and within 2 dB up to 1 kHz.
+3. *What that method costs the voice.* Both passes took about 2 to 3 dB off his voice between 70 and 200 Hz and nothing above 300 Hz. The cause is the frequency smoothing: each band's gain is averaged with six neighbours on either side, the bands below 70 Hz hold rumble and are shut nearly all the time, and the lowest note of a voice pitched near 125 Hz sits within six bands of them. With those bands left out of the averaging the loss at 70 to 140 Hz is 0.0 dB and the pauses are as quiet as before.
+4. *Where the sample is taken.* With the sample drawn only from the quietest moments, the room's hiss came down 20 dB and everything else in a pause was left standing: in an 8-minute piece, 9 to 13 % of the quietest windows had a band jumping 6 dB or more above the rest, against 0 to 1.5 % before any noise reduction. Drawn from the quieter half of all the pauses, that share is 0.4 to 1.3 %, and breaths between sentences lose 8 dB below 1 kHz and 2.6 dB from 1 to 4 kHz. Soft speech sounds and weak consonants changed by 0.3 dB or less under either rule.
+
+**What changed.** The between-words noise reduction is gone. In its place is the method above, run over the whole edit ahead of the compressor, with settings on Audacity's scales: `noise_reduction` (`"auto"`, `"on"`, `"off"`), `noise_reduction_db`, `noise_sensitivity`, `noise_smoothing`. On automatic it still runs only where the floor would end above −62 dB, now by 12 dB. The first of the ten recordings mastered at a floor of −58.9 dB with it off, −70.7 dB on automatic, and −78.7 dB at 20 dB. It adds about a second per minute of audio. 37 tests.
+
+**Still open.** How far the result holds for a room with louder or less steady noise than this one, and for a higher voice, where the lowest note has empty bands below it that the 70 Hz line does not cover. Lower `noise_smoothing` is the remedy there (at 3, before the 70 Hz line, the loss at this voice's lowest note was under half of what it was at 6).
 
 ### 2026-10-09: the true-peak meter at block edges
 

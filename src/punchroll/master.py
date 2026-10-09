@@ -1,16 +1,17 @@
-"""Mastering to ACX specs: high-pass, gentle compression, a look-ahead limiter, and loudness.
+"""Mastering to ACX specs: noise reduction where it is asked for or needed, high-pass, gentle
+compression, a look-ahead limiter, and loudness.
 
 Pure numpy/scipy, so nothing here adds a copyleft dependency.
 
 ACX asks for -23 to -18 dB RMS, peaks no higher than -3 dB, and a noise floor
-below -60 dB RMS. The limiter and the loudness search run in blocks, so memory
-stays flat for long chapters.
+below -60 dB RMS. Every whole-file pass runs in blocks, so memory stays flat
+for long chapters.
 """
 from __future__ import annotations
 
 import numpy as np
-from scipy.ndimage import minimum_filter1d, uniform_filter, uniform_filter1d
-from scipy.signal import butter, istft, sosfilt, stft
+from scipy.ndimage import binary_erosion, binary_opening, minimum_filter1d, uniform_filter1d
+from scipy.signal import butter, get_window, istft, sosfilt, stft
 
 from .audio import BLOCK, frame_db, noise_floor_db, rms_db, true_abs, true_peak_db
 from .config import MasterSettings
@@ -84,50 +85,156 @@ def compress(y: np.ndarray, sr: int, threshold_db: float, ratio: float, attack_m
     return out
 
 
-def denoise(y: np.ndarray, sr: int, noise: np.ndarray, reduce: float = 0.6, n_std: float = 1.5,
-            n_fft: int = 1024, hop: int = 256, chunk_s: float = 30.0) -> np.ndarray:
-    """Stationary spectral gate: bins that don't rise above the room tone's level are turned down.
+def _nr_window(sr: int) -> int:
+    """Samples per window for noise reduction: 2048 at 44.1 and 48 kHz, in step with other sample rates."""
+    return 1 << int(round(np.log2(2048 * sr / 44100)))
 
-    Thresholds come from the room tone (mean + 1.5 standard deviations per frequency, in dB);
-    the mask is smoothed over about 500 Hz and 50 ms and only reduces by `reduce`
-    (0.6 = 60 %), so speech and breaths keep their natural texture.
+
+def noise_profile(y: np.ndarray, sr: int) -> np.ndarray | None:
+    """The noise sample: average power in each frequency band over the quieter half of the recording's pauses.
+
+    A pause is a stretch where the level from 200 to 4000 Hz stays within 25 dB of the quietest twentieth
+    of the recording (and 20 dB or more under the voice), counted from a quarter second after the last
+    louder sound to a quarter second before the next. Of those windows the quieter half is averaged, which
+    leaves out thumps and the fuller breaths.
+
+    The sample is taken from the pauses as a whole and not from their single quietest moment, because a
+    pause holds more than the room: faint mouth sounds, the low end of a breath. With only the room's hiss
+    in the sample those are left standing in a pause that is otherwise 20 dB quieter, and the leftover
+    crackles. Returns None when the pauses come to under half a second, or the quiet isn't 20 dB below
+    the voice: a recording with no pauses in it has nothing to take a sample from.
     """
-    kw = dict(fs=sr, nperseg=n_fft, noverlap=n_fft - hop)
-    _, _, N = stft(noise.astype(np.float32), **kw)
-    ndb = 20 * np.log10(np.abs(N) + 1e-10)
-    thresh = (ndb.mean(axis=1) + n_std * ndb.std(axis=1))[:, None]
-    fb, tb = max(1, round(500 / (sr / n_fft))), max(1, round(0.05 * sr / hop))
-    out = np.empty_like(y)
-    chunk, pad = int(chunk_s * sr), 4 * n_fft
+    n = _nr_window(sr)
+    hop = n // 4
+    count = (len(y) - n) // hop + 1 if len(y) >= n else 0
+    if count * hop < sr:
+        return None
+    win = get_window("hann", n).astype(np.float32)
+    f = np.fft.rfftfreq(n, 1 / sr)
+    voice = (f >= 200) & (f < 4000)
+    windows = np.lib.stride_tricks.sliding_window_view(y, n)[::hop]      # a view: nothing is copied until it is read
+
+    def power(rows):
+        return np.abs(np.fft.rfft(windows[rows] * win, axis=1)) ** 2
+
+    level, total = np.empty(count, np.float32), np.empty(count, np.float32)
+    for a in range(0, count, 2048):
+        P = power(slice(a, a + 2048))
+        level[a:a + len(P)], total[a:a + len(P)] = P[:, voice].sum(axis=1), P.sum(axis=1)
+    level = 10 * np.log10(level / win.sum() ** 2 + 1e-30)
+    live = level > -130                                                  # digital silence is not room tone
+    if live.sum() * hop < sr // 2:
+        return None
+    floor, top = np.percentile(level[live], [5, 95])
+    if top - floor < 20:
+        return None
+    clear = max(2, int(0.25 * sr / hop))                                 # windows in a quarter second
+    quiet = binary_opening(live & (level < max(floor + 6, min(floor + 25, top - 20))), np.ones(clear, bool))
+    rows = np.flatnonzero(binary_erosion(quiet, np.ones(2 * clear + 1, bool)))
+    if len(rows) * hop < sr // 2:
+        return None
+    rows = np.sort(rows[np.argsort(total[rows])[:len(rows) // 2]])
+    rows = rows[::max(1, len(rows) // 20000)]                            # four minutes of pauses is plenty
+    mean = np.zeros(n // 2 + 1)
+    for a in range(0, len(rows), 2048):
+        mean += power(rows[a:a + 2048]).sum(axis=0)
+    return (mean / len(rows) / win.sum() ** 2).astype(np.float32)        # on the scale scipy's stft uses
+
+
+def _noise_gains(P, profile, sr, hop, reduce_db, sensitivity, smoothing, first, attack=0.02, release=0.10):
+    """Gain for each window (down) and band (across) of the power spectra P, by the rules of Audacity's Noise Reduction.
+
+    A band holds only noise at some moment unless the second loudest of five neighbouring windows is more
+    than sensitivity x ln(10) times the noise's average there (11 dB over it at 6, which noise alone reaches
+    about one time in a million). Noise is turned down by reduce_db. The turning down fades in over `release`
+    seconds after a sound and lifts `attack` seconds ahead of one, and each band's gain is then averaged, in
+    decibels, with `smoothing` bands on either side.
+
+    One departure from Audacity: bands below `first` take no part in that averaging. The high-pass removes
+    them anyway, and being empty they would pull the lowest note of the voice down with them.
+    """
+    count, bands = P.shape
+    pad = np.pad(P, ((2, 2), (0, 0)), mode="edge")
+    top, second = np.maximum(pad[:count], pad[1:count + 1]), np.minimum(pad[:count], pad[1:count + 1])
+    for i in (2, 3, 4):                                    # the two loudest of each window and its four neighbours
+        np.maximum(second, np.minimum(top, pad[i:i + count]), out=second)
+        np.maximum(top, pad[i:i + count], out=top)
+    low = 10 ** (-reduce_db / 20)
+    G = np.where(second <= sensitivity * np.log(10) * profile, np.float32(low), np.float32(1))
+    fade = np.float32(low ** (1 / (1 + int(release * sr / hop))))
+    lift = np.float32(low ** (1 / (1 + int(attack * sr / hop))))
+    for i in range(1, count):
+        np.maximum(G[i], G[i - 1] * fade, out=G[i])
+    for i in range(count - 2, -1, -1):
+        np.maximum(G[i], G[i + 1] * lift, out=G[i])
+    if smoothing > 0 and first < bands:
+        width = 2 * smoothing + 1                          # a window that runs off either end averages what it has
+        share = uniform_filter1d(np.ones(bands - first, np.float32), width, mode="constant")
+        G[:, first:] = np.exp(uniform_filter1d(np.log(G[:, first:]), width, axis=1, mode="constant") / share)
+    return G
+
+
+def reduce_noise(y: np.ndarray, sr: int, profile: np.ndarray, reduce_db: float = 12.0, sensitivity: float = 6.0,
+                 smoothing: int = 3, highpass_hz: float = 70.0, chunk_s: float = 30.0) -> np.ndarray:
+    """Turn the room's noise down by reduce_db through the whole recording, pauses and speech alike. In place.
+
+    The recording is split into overlapping windows and each window into frequency bands; a band is turned
+    down wherever it holds nothing more than the noise in `profile` (see noise_profile and _noise_gains).
+    The one rule runs from the first sample to the last, so a steady hum doesn't come and go with the
+    voice: it is down in every band the voice isn't using at that moment, and the voice covers it in the rest.
+    """
+    n = _nr_window(sr)
+    if len(y) < n or reduce_db <= 0:
+        return y
+    hop = n // 4
+    kw = dict(fs=sr, window="hann", nperseg=n, noverlap=n - hop)
+    first = int(np.ceil(max(0.0, highpass_hz) * n / sr))
+    chunk, pad = max(1, int(chunk_s * sr) // hop) * hop, 32 * hop
+    before = y[:0]
     for a in range(0, len(y), chunk):
-        lo, hi = max(0, a - pad), min(len(y), a + chunk + pad)
-        _, _, S = stft(y[lo:hi], **kw)
-        mask = uniform_filter((20 * np.log10(np.abs(S) + 1e-10) > thresh).astype(np.float32), size=(fb, tb))
-        _, z = istft(S * (1 - reduce * (1 - mask)), **kw)
-        n = min(chunk, len(y) - a)
-        out[a:a + n] = z[a - lo:a - lo + n]
-    return out
+        own = y[a:a + chunk].copy()                       # as recorded: the next chunk needs its end for context
+        _, _, S = stft(np.concatenate([before, own, y[a + chunk:a + chunk + pad]]), **kw)
+        G = _noise_gains(np.ascontiguousarray((np.abs(S) ** 2).T), profile, sr, hop, reduce_db, sensitivity,
+                         int(smoothing), first)
+        _, z = istft(S * G.T, **kw)
+        y[a:a + len(own)] = z[len(before):len(before) + len(own)]
+        before = np.concatenate([before, own])[-pad:]
+    return y
 
 
-def master(y: np.ndarray, sr: int, ms: MasterSettings, room_tone: np.ndarray | None = None, log=print):
+def master(y: np.ndarray, sr: int, ms: MasterSettings, log=print):
     pre = np.float32(10 ** ((-22 - rms_db(y)) / 20))
 
     def board(z):
         return compress(highpass(z, sr, ms.highpass_hz), sr, ms.compressor_threshold_db, ms.compressor_ratio)
 
+    def quieten(z) -> float:
+        profile = noise_profile(z, sr)
+        if profile is None:
+            log("  noise reduction skipped: no quiet stretch to take a sample of the room's noise from")
+            return 0.0
+        reduce_noise(z, sr, profile, ms.noise_reduction_db, ms.noise_sensitivity, ms.noise_smoothing, ms.highpass_hz)
+        return float(ms.noise_reduction_db)
+
     y *= pre                                   # in place: the caller hands over the edited audio
+    mode = ms.noise_reduction if ms.noise_reduction_db > 0 else "off"
+    reduced = 0.0
+    if mode == "on":                           # ahead of the compressor, which would lift the noise in every pause
+        log(f"  turning the room's noise down by {ms.noise_reduction_db:g} dB")
+        reduced = quieten(y)
     z = board(y)
+    if mode == "auto":
+        floor = noise_floor_db(z, sr) + ms.rms_db - rms_db(z)      # where the noise floor will sit once the level is set
+        if floor > ms.denoise_above_db:
+            log(f"  noise floor would be {floor:.1f} dB: turning the room's noise down by {ms.noise_reduction_db:g} dB")
+            reduced = quieten(y)
+            if reduced:
+                del z
+                z = board(y)
     del y
     out, gain = _level(z, sr, ms)
     del z
-    nf = noise_floor_db(out, sr)
-    if nf > ms.denoise_above_db and room_tone is not None and len(room_tone) > sr // 2:
-        log(f"  noise floor {nf:.1f} dB is high; applying gentle noise reduction")
-        noise = board(room_tone * pre) * np.float32(gain)
-        out = denoise(out, sr, noise)
-        out, g2 = _level(out, sr, ms)
-        gain *= g2
-    return out, acx_metrics(out, sr) | {"gain_db": round(20 * np.log10(gain * pre), 1)}
+    return out, acx_metrics(out, sr) | {"gain_db": round(20 * np.log10(gain * pre), 1), "noise_reduction_db": reduced}
 
 
 def acx_metrics(y: np.ndarray, sr: int) -> dict:

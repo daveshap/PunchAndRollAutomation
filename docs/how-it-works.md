@@ -76,10 +76,22 @@ Room tone is taken from the recording itself: half-second stretches with no spee
 ## 5. Master
 
 1. Normalize to −22 dB RMS.
-2. Second-order high-pass at 70 Hz.
-3. Compressor: RMS detector on 10 ms windows, −26 dB threshold, 2:1, 10 ms attack, 150 ms release.
-4. Look-ahead limiter (6 ms) with a true-peak ceiling of −3.5 dB, and the gain searched so the result lands at −20 dB RMS. The limiter works from the waveform's level between samples (4x oversampled), not from the samples alone: on a bright or sibilant voice the two differ by 2 dB or more, and a limiter that only watches samples lets the true peak through. ACX's limit is −3 dB; the half decibel is room for their meter to read a little higher than this one.
-5. If the noise floor (quietest half second) is still above −62 dB, gentle stationary noise reduction using the room tone as the noise profile, then re-level.
+2. Noise reduction, if `noise_reduction` is `"on"`, or if it is `"auto"` (the default) and the noise floor (quietest half second) would otherwise end above −62 dB. See below.
+3. Second-order high-pass at 70 Hz.
+4. Compressor: RMS detector on 10 ms windows, −26 dB threshold, 2:1, 10 ms attack, 150 ms release.
+5. Look-ahead limiter (6 ms) with a true-peak ceiling of −3.5 dB, and the gain searched so the result lands at −20 dB RMS. The limiter works from the waveform's level between samples (4x oversampled), not from the samples alone: on a bright or sibilant voice the two differ by 2 dB or more, and a limiter that only watches samples lets the true peak through. ACX's limit is −3 dB; the half decibel is room for their meter to read a little higher than this one.
+
+**Noise reduction** follows the method of Audacity's Noise Reduction effect, and its three settings mean what Audacity's three sliders mean. The difference is that nobody selects a noise sample: it is found in the pauses.
+
+- The recording is cut into overlapping windows of 46 ms, and each window into about a thousand frequency bands.
+- *The noise sample* is the average level of each band over the quieter half of the pauses. A pause here is a stretch where the level between 200 and 4000 Hz stays within 25 dB of the quietest twentieth of the recording, from a quarter second after the last louder sound to a quarter second before the next. The sample comes from the pauses as a whole and not from their one quietest moment, because a pause holds more than the room: faint mouth sounds, the low end of a breath. With only the room's hiss in the sample, those are left standing in a pause that is otherwise much quieter, and the leftover crackles.
+- A band holds only noise at a given moment unless it rises well above the sample: at `noise_sensitivity = 6`, about 11 dB above it in two of five neighbouring windows. Bands holding only noise are turned down by `noise_reduction_db`. Everything else passes as it is, so a breath that stands clear of the pause keeps its top and loses some of its low end.
+- The turning down fades in over 0.1 seconds after a sound and lifts 0.02 seconds ahead of one. Each band's gain is then averaged with `noise_smoothing` bands on either side, so no band is left open or shut alone.
+- The same rule runs from the first sample to the last, ahead of the compressor. A steady hum is down in every band the voice isn't using at that moment and is covered by the voice in the rest, so it doesn't come and go with the words.
+
+One thing is done differently from Audacity. The bands under the high-pass frequency take no part in the smoothing. They hold rumble and none of the voice, they are shut nearly all the time, and averaging them with the bands just above turned the lowest note of a low voice down with them: 3 dB at 100 to 140 Hz on a voice pitched near 125 Hz, at smoothing 6.
+
+If the recording has no pauses to sample (under half a second of them, or quiet that isn't 20 dB below the voice), noise reduction is skipped and the log says so.
 
 The WAV master is written at the bit depth the recording came in at (16 bits at least, 24 at most; 16-bit output is dithered). The MP3 is resampled to 44.1 kHz if needed and encoded, then decoded again and measured: if resampling or the encoder pushed its true peak over the ceiling, it is encoded again slightly lower.
 
