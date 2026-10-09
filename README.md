@@ -10,7 +10,7 @@ What running it on real recordings has turned up, and what changed in the code b
 
 ## What it does
 
-1. **Transcribes** each recording with word timings, offline, using NVIDIA Parakeet TDT 0.6B v2 through sherpa-onnx. Sound at the voice's level that the voice detector skips (a clipped sentence start, a muttered aside) is transcribed too, so it can't sit unheard in a pause.
+1. **Transcribes** each recording with word timings, offline, using NVIDIA Parakeet TDT 0.6B v2 through sherpa-onnx. Sound at the voice's level that the voice detector skips (a clipped sentence start, a muttered aside) is transcribed too, so it can't sit unheard in a pause, and sound the recognizer has no word for (a cut-off syllable, a bump) is cut the way a filler is.
 2. **Aligns** the transcript to your narration script. Restarts, skipped text, fillers ("um", "sorry"), and asides are explicit moves in the alignment, so a repeated phrase, a retaken sentence, and a re-read paragraph are all recognized the same way. For every word of the script, the last reading wins. A word your retake leaves out stays out, so nothing from the abandoned take is set into the middle of it. A word or two you add at the edge of a line is kept when it runs straight on from the line.
 3. **Comps** where it helps: if the last take of a line has a slip that an earlier take read correctly, the two are spliced at a natural pause. If you reword lines on purpose as you read, `--no-comps` keeps your last take of every line whole.
 4. **Rebuilds the pauses.** Your own pauses and breaths are kept wherever nothing was cut and the pause is in range. Where a take was cut, or a pause is too long or too short, the gap is rebuilt from your room's own tone. Every join gets a short crossfade.
@@ -120,7 +120,7 @@ For mastering, `limiter_ceiling_db` is the true-peak ceiling (−3.5 dB, half a 
 
 Noise reduction is automatic unless you say otherwise: it runs only when the noise floor would end above −62 dB, and turns the room's noise down by 12 dB. `noise_reduction = "on"` runs it on every chapter and `"off"` on none. `noise_reduction_db`, `noise_sensitivity`, and `noise_smoothing` are the three numbers Audacity's Noise Reduction effect asks for and mean the same here, so settings you already trust carry over. There is no noise sample to select: it is taken from the pauses. A hum at the pitch of your voice still passes while you are speaking, where your voice covers it, and is down by the full amount in every pause. More in [docs/how-it-works.md](docs/how-it-works.md#5-master).
 
-Two settings decide how much of your own wording survives when you depart from the script. `comps = false` (or `--no-comps` on the command line) keeps the last take of every line whole instead of splicing in part of an earlier one. `adlib` under `[pauses]` is how closely an unscripted word must follow or lead into a line to count as part of it (0.25 seconds by default).
+Two settings decide how much of your own wording survives when you depart from the script. `comps = false` (or `--no-comps` on the command line) keeps the last take of every line whole instead of splicing in part of an earlier one. That includes its end: if your retake drops the last few words of a sentence and reads on, they stay dropped. `adlib` under `[pauses]` is how closely an unscripted word must follow or lead into a line to count as part of it (0.25 seconds by default).
 
 ## Running it with an AI agent (optional)
 
@@ -132,7 +132,7 @@ Nothing in the pipeline calls an AI service. If you'd like Claude to run it for 
 ## Limits
 
 - The recognizer sometimes mishears names, numbers, and short words, so pickups are places to listen, not verdicts. It formats numbers by context: "$450" has come back as "$450,000" right after a larger figure was read.
-- A sound at the voice's level with no recognizable words in it (a cough, a throat-clear) that falls between two kept sentences stays in the edit, and no report lists it. Between a cut take and its re-read it is removed with everything else.
+- A sound at the voice's level with no recognizable words in it (a cut-off syllable, a cough, a bump) is cut and listed in the report as a stray sound, provided it stands clear of the words around it. One that runs into a word, or sits more than 25 dB under the voice, is not caught. One that stands where the script has a word nothing else was heard for is kept as that word, and the report says so.
 - Cuts are placed in quiet where there is any. When you stumble and start again without a pause, the cut goes just ahead of the re-read's first word, in whatever sound is there, and the report doesn't mark that join.
 - English only (Parakeet v2 is an English model).
 - If the script repeats a sentence word for word, a retake of it can occasionally be matched to the wrong instance.
@@ -141,6 +141,24 @@ Nothing in the pipeline calls an AI service. If you'd like Claude to run it for 
 ## Field log
 
 Notes from real sessions: what was run, what it showed, and what changed in the code because of it. Newest first.
+
+### 2026-10-09, third entry: two more recordings, and two things left in the edit
+
+**The job.** Two new recordings of 8 to 9 minutes, read with the titles left off, comps off, noise reduction on. Both mastered at −20 dB RMS with noise floors of −83 dB.
+
+**What it showed.**
+
+1. *An ending the reader said he was cutting came back.* He read a sentence to its end, said "that doesn't make any sense, I'm going to cut that out", re-read it without its last five words, and went on to the next sentence. The edit kept the retake and then set the five words in after it from the abandoned take. A word left out of the middle of a retake already stayed out. One left off the end stayed out only when the dropped words were few: the alignment counts three or four as words not read and more than that as a jump ahead, and a jump ahead that reached the end of the sentence was taken to mean the take had stopped there.
+2. *A cut-off syllable sat in a pause.* `verify` found a restart in the finished file: "The th— The easy things were always the hard part." The recognizer had heard the syllable in the finished file and not in the recording, where the same stretch came back as the sentence alone. Nothing marked the syllable as speech, so it was kept as part of the pause before the sentence.
+3. *It was not the only one.* A search of all twelve recordings for sound at the voice's level that no recognized word covers found three inside the finished edits: that syllable, another cut-off syllable before a sentence in a recording delivered two days earlier, and a low bump with a click before a sentence in a third. `verify` had passed the last two, because the recognizer has no word for them in any decoding. Every other sound the search found was already being cut with the take around it.
+
+**What changed.**
+
+- With comps off, a take that stops partway through a sentence and reads on has dropped the rest, whatever its length, and the earlier take's ending is not put back (`last_take(..., whole=True)`). With comps on, nothing changes.
+- When the edit is built, sound at the voice's level that touches no recognized word is entered in the transcript as `[sound]` and cut as a filler is, unless it stands where the script has a word that nothing else was heard for (`edit.stray_sounds`). The report counts and lists stray sounds.
+- The three recordings were edited again. In each, the edit list changed only at the sound in question, the nine other recordings' edit lists did not change, and `verify` finds no restarts left in any of the twelve. 40 tests.
+
+**Still open.** A stray sound that runs into a word, with no dip between them, is not separated from it. A cut-off syllable followed straight away by the word it was reaching for is the likely case.
 
 ### 2026-10-09, second entry: noise reduction that doesn't come and go
 

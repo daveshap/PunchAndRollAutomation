@@ -11,6 +11,10 @@ The editor treats whatever lies between two recognized words as a pause and keep
 - **Sound the detector left out.** The detector sometimes starts a stretch late, ends one early, or misses a short phrase or a muttered aside between two pauses. Any sound that stays within 25 dB of the voice's level for 0.15 seconds or more, and comes within 15 dB of it, is added to the detector's stretches. Breaths and clicks fall short of that. In a room too noisy to tell the voice from the background by level, the detector's stretches are used as they are.
 - **A stretch that comes back empty.** The recognizer can drop a short stretch at the end of a long chunk. A stretch with no words is decoded again on its own.
 
+A third check runs when the edit is built, because some sound never gets a word however it is decoded. The recognizer smooths a cut-off syllable out of its text ("Th— The easy things were always the hard part" comes back as the sentence alone), and it has no word for a bump or a cough.
+
+- **Sound that no word covers.** Any sound that stays within 25 dB of the voice's level for 0.1 seconds or more, comes within 15 dB of it, and touches no recognized word (each word's time widened by 0.08 seconds) is entered in the transcript as `[sound]`. The alignment treats it as a filler, so it is cut, and the report lists it as a stray sound. The exception is a sound standing where the script has a word that nothing else was heard for: there it costs less to read it as that word than to cut it and count the word missing, so it stays and the report shows `read '[sound]' for` that word. A word whose own reported time holds no sound has had its time misplaced by the recognizer, and sound within 0.35 seconds of such a word is left alone.
+
 Every finished chunk is written to the transcript cache immediately, so an interrupted run resumes where it stopped, and a finished transcript is reused whenever the same recording is edited again.
 
 ## 2. Align, allowing restarts
@@ -47,6 +51,8 @@ For every script word, the last spoken word aligned to it wins. Tokens it replac
 - Inserted words are kept only as short ad-libs (one or two words): inside a kept stretch of a single line, or at the edge of a line when they run straight on from the kept word beside them, with less than 0.25 seconds between ("until they were cheap enough.", "And groceries don't fall."). Cutting those would mean cutting where there is no pause. Fillers, asides that stand apart between lines, and anything outside the text are cut.
 
 **Comps.** If the last take of a line still differs from the script and an earlier take read that part correctly, the line is assembled from the two, split at a word boundary where both takes had a natural pause of at least 0.12 seconds. It's used only when it reduces the number of real differences. If you reword lines on purpose as you read, turn comps off (`--no-comps`, or `comps = false` in the settings): the last take of every line is then kept whole, and the rewording is only listed in the report.
+
+With comps off, "whole" covers the end of a sentence too. A take that stops partway through a sentence and reads on into the next one has dropped the rest ("...including benefits, for one shift a day. That doesn't make sense, I'm cutting that. ...including benefits. In 2024..."), and the earlier take's ending is not put back after it. With comps on, the earlier ending still completes the line, since the script's words are then what counts.
 
 ## 4. Rebuild the pauses
 

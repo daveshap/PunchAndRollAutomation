@@ -54,7 +54,8 @@ def write_reports(out_dir: Path, name: str, res: dict, takes, metrics: dict | No
           f"Recording: {s['raw_minutes']:.1f} min in {len(takes)} file(s) → edited: {s['edited_minutes']:.1f} min  ",
           f"Lines found: {s['lines_found']} of {s['lines']} · restarts cut: {s['restarts']} · "
           f"lines with retakes: {s['lines_with_retakes']} · two-take splices: {s['comps']} · "
-          f"words cut: {s['words_cut']} of {s['words_heard']}", ""]
+          f"words cut: {s['words_cut']} of {s['words_heard']}"
+          + (f" · stray sounds cut: {s['stray_sounds']}" if s.get("stray_sounds") else ""), ""]
     if metrics:
         mp3 = metrics.get("mp3_true_peak_db")
         in_mp3 = f", and {mp3} dB in the MP3" if mp3 is not None else ""

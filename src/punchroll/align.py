@@ -19,7 +19,8 @@ import numpy as np
 
 from .config import AlignSettings
 
-FILLERS = {"uh", "um", "erm", "uhm", "hmm", "mm", "ah", "er", "sorry", "yeah", "okay", "ok", "oops"}
+SOUND = "[sound]"        # stands in the transcript for sound at the voice's level that the recognizer gave no word for
+FILLERS = {"uh", "um", "erm", "uhm", "hmm", "mm", "ah", "er", "sorry", "yeah", "okay", "ok", "oops", SOUND}
 INF = 1_000_000_000
 
 
@@ -196,9 +197,13 @@ class Aligner:
         return ev, cost
 
 
-def last_take(events, hyp: list[str], sent_of: list[int]):
+def last_take(events, hyp: list[str], sent_of: list[int], whole: bool = False):
     """Apply 'last reading wins'. Returns one dict per spoken token:
-    kind (match/sub/ins), pos (script index) or slot, pass, kept, why."""
+    kind (match/sub/ins), pos (script index) or slot, pass, kept, why.
+
+    whole: the last take of a line stands as it was read (comps off). A take that leaves the end of
+    a sentence unread and reads on has dropped that ending, and an earlier take's is not put back.
+    """
     n = len(hyp)
     info = [None] * n
     pass_id = 0
@@ -219,7 +224,7 @@ def last_take(events, hyp: list[str], sent_of: list[int]):
             d["why"] = None if d["kept"] else "re-read later"
     # a word a later take read straight past is not part of the last reading: keeping the earlier
     # take's would drop one word or phrase of that take into the middle of the later one
-    read, passed, pass_id = defaultdict(list), [], 0
+    read, passed, dropped, pass_id = defaultdict(list), [], [], 0
     for e in events:
         if e[0] == "restart":
             pass_id += 1
@@ -227,8 +232,11 @@ def last_take(events, hyp: list[str], sent_of: list[int]):
             read[pass_id].append(e[2])
         elif e[0] == "del":
             passed.append((pass_id, e[2], False))
-        elif e[0] == "skip" and sent_of[e[2]] == sent_of[e[3] - 1]:
-            passed += [(pass_id, q, True) for q in range(e[2], e[3])]
+        elif e[0] == "skip":
+            if sent_of[e[2]] == sent_of[e[3] - 1]:
+                passed += [(pass_id, q, True) for q in range(e[2], e[3])]
+            if whole:                                  # the rest of the sentence the take was in when it jumped ahead
+                dropped += [(pass_id, q) for q in range(e[2], e[3]) if sent_of[q] == sent_of[e[2]]]
     for p, q, one_line in passed:
         got = read[p]
         at = bisect.bisect_left(got, q)
@@ -236,6 +244,12 @@ def last_take(events, hyp: list[str], sent_of: list[int]):
             continue                                   # the take started or stopped here; it didn't read past
         if q in writer and info[writer[q]]["pass"] < p:
             info[writer[q]]["kept"], info[writer[q]]["why"] = False, "re-read later"
+    # with the last take kept whole: a take that was reading this sentence, left its ending unread and read on
+    for p, q in dropped:
+        got = read[p]
+        at = bisect.bisect_left(got, q)
+        if 0 < at < len(got) and sent_of[got[at - 1]] == sent_of[q] and q in writer and info[writer[q]]["pass"] < p:
+            info[writer[q]]["kept"], info[writer[q]]["why"] = False, "left out of the last take"
     # a misread word right before a mid-line restart is what the reader stopped to fix;
     # if the restart didn't re-read it, drop it
     pass_id = 0
@@ -271,7 +285,7 @@ def last_take(events, hyp: list[str], sent_of: list[int]):
             if info[g]["kept"]:
                 info[g]["why"] = None
             elif filler:
-                info[g]["why"] = "filler"
+                info[g]["why"] = "stray sound" if hyp[g] == SOUND else "filler"
             elif prev is None or nxt is None:
                 info[g]["why"] = "outside the text"
             elif not (info[prev]["kept"] and info[nxt]["kept"]):

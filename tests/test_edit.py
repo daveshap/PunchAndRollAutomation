@@ -12,7 +12,8 @@ from punchroll.text import Line
 
 SR = 16000
 NAMES = "alpha bravo charlie delta echo foxtrot golf hotel india juliet".split()
-FREQ = {w: 400 + 130 * i for i, w in enumerate(NAMES)}
+MORE = "kilo lima mike".split()                            # for the one test that needs a longer line
+FREQ = {w: 400 + 130 * i for i, w in enumerate(NAMES + MORE)}
 
 
 def synth(sequence):
@@ -118,3 +119,36 @@ def test_word_left_out_of_the_last_take_stays_out_unless_a_comp_restores_it():
     res = build_edit(x, SR, words, lines_for([NAMES[:6]]), Settings(), log=lambda *a: None)
     assert len(res["comps"]) == 1 and not res["pickups"]                       # with comps, spliced at a pause instead
     assert detect(res["audio"]) == NAMES[:6]
+
+
+def test_sound_at_the_voices_level_with_no_word_for_it_is_cut_unless_it_stands_where_a_word_should():
+    quiet = lambda *a: None                                                    # noqa: E731
+    seq = ["alpha", 0.15, "bravo", 0.15, "charlie", 0.6, "juliet", 0.5, "delta", 0.15, "echo", 0.15, "foxtrot"]
+    x, words = synth(seq)
+    heard = [w for w in words if w["text"] != "juliet"]                        # a cut-off syllable the recognizer passed over
+    res = build_edit(x, SR, heard, lines_for([NAMES[:3], NAMES[3:6]]), Settings(), log=quiet)
+    assert detect(res["audio"]) == NAMES[:6]                                   # it would have sat in the pause between the lines
+    assert [c["why"] for c in res["cuts"]] == ["stray sound"] and res["summary"]["stray_sounds"] == 1
+    assert res["summary"]["words_heard"] == 6 and res["summary"]["words_cut"] == 0 and not res["pickups"]
+
+    # the same sound where the script has a word that nothing else was heard for: it is that word, and it stays
+    x, words = synth(["alpha", 0.15, "bravo", 0.15, "charlie", 0.15, "delta"])
+    res = build_edit(x, SR, [w for w in words if w["text"] != "charlie"], lines_for([NAMES[:4]]), Settings(), log=quiet)
+    assert detect(res["audio"]) == NAMES[:4] and res["summary"]["stray_sounds"] == 0
+    assert [p["problem"] for p in res["pickups"]] == ["read '[sound]' for 'charlie'"]
+
+
+def test_ending_the_last_take_dropped_stays_out_when_the_last_take_is_kept_whole():
+    line1, line2 = NAMES + MORE[:1], MORE[1:]              # eleven words, then "lima mike"
+    seq = [w for word in line1 for w in (word, 0.15)][:-1] + [0.8]             # the whole line, then a change of mind
+    seq += [w for word in line1[:6] for w in (word, 0.15)][:-1] + [0.7, "lima", 0.15, "mike"]   # re-read without its last five words
+    x, words = synth(seq)
+    as_read = Settings()
+    as_read.comps = False
+    res = build_edit(x, SR, words, lines_for([line1, line2]), as_read, log=lambda *a: None)
+    assert detect(res["audio"]) == line1[:6] + line2                           # nothing of the abandoned take comes back
+    assert all(b["raw_in"] > a["raw_out"] for a, b in zip(res["edl"], res["edl"][1:]))       # the edit never goes back in the recording
+    assert [p["line"] for p in res["pickups"]] == [1] and "missing" in res["pickups"][0]["problem"]
+
+    res = build_edit(x, SR, words, lines_for([line1, line2]), Settings(), log=lambda *a: None)
+    assert detect(res["audio"]) == line1 + line2                               # by default the earlier ending completes the line
