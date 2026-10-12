@@ -15,7 +15,8 @@ What running it on real recordings has turned up, and what changed in the code b
 3. **Comps** where it helps: if the last take of a line has a slip that an earlier take read correctly, the two are spliced at a natural pause. If you reword lines on purpose as you read, `--no-comps` keeps your last take of every line whole.
 4. **Rebuilds the pauses.** Your own pauses and breaths are kept wherever nothing was cut and the pause is in range. Where a take was cut, or a pause is too long or too short, the gap is rebuilt from your room's own tone. Every join gets a short crossfade.
 5. **Masters to ACX**: −20 dB RMS, true peak at −3.5 dB or lower (ACX's limit is −3), noise floor below −60 dB (with noise reduction if the room needs it, or whenever you ask for it), 1.5 s of room tone at the head and 3 s at the tail. Writes a WAV at your recording's bit depth and a 44.1 kHz mono 192 kbps constant-bit-rate MP3, and measures the MP3's own peak after encoding it.
-6. **Reports** what to re-record (pickups), every cut and why, every pause it changed, and an edit decision list.
+6. **Reports** what to re-record (pickups), every cut and why, the cut words that are never said again (so an ad-lib that was taken for an aside can't go unnoticed), every pause it changed, and an edit decision list.
+7. **Checks finished files** against ACX's requirements and ElevenLabs' guidance for voice-clone training audio, scores a project's chapters side by side (mouth clicks, the room, retakes, tone, breaths), and draws spectrograms. See [docs/checking.md](docs/checking.md).
 
 ## Install
 
@@ -29,6 +30,8 @@ punchroll models          # downloads about 480 MB of speech models, once
 ```
 
 Models go to your user cache folder (`~/.cache/punchroll`, `~/Library/Caches/punchroll`, or `%LOCALAPPDATA%\punchroll`). Set `PUNCHROLL_MODELS` to put them elsewhere.
+
+Two extras are optional and not part of `all`, because they are large and editing doesn't need them: `pip install -e ".[pictures]"` adds matplotlib for `punchroll picture`, and `pip install -e ".[listen]"` adds PyTorch and torchaudio for the scorecard's trained listener.
 
 **If `punchroll` isn't found after installing** (common on Windows with more than one Python): pip installed it into a Python whose `Scripts` folder isn't on your PATH, and `py` may be starting a different Python than the one pip used. pip's output names the Python it installed into. Run punchroll through that one:
 
@@ -90,6 +93,20 @@ punchroll transcribe take-07.wav
 
 That writes the words and their times to `edited/take-07.words.json`. The transcript is cached, so `clean` won't transcribe the file again.
 
+## Checking finished files
+
+Three commands look at finished audio without changing it. What each measures, the published figures behind the checks, and what the measures can't tell you are in [docs/checking.md](docs/checking.md).
+
+```bash
+punchroll standards edited/*.mp3     # against ACX and ElevenLabs' voice-clone guidance; no transcription
+punchroll scorecard book.toml        # every finished chapter side by side, best first
+punchroll picture edited/ch01.wav --at 3:08 --with ch01.wav --with-at 3:14.5
+```
+
+- **`standards`** measures loudness, true peak, noise floor, room tone at each end, the longest pause, the format, and how far each file's tone sits from the rest, and says which of ACX's and ElevenLabs' figures a file misses. It also adds up the set: ElevenLabs asks for 30 minutes at the least and two to three hours for the best clone.
+- **`scorecard`** is for choosing among recordings that all pass. Per chapter: mouth clicks per minute, how quiet the room was, how many lines needed a retake, how far the tone is from the set's, pitch, pace, and how many breaths came through whole. `--listener` adds a trained model's estimate of how clean each file sounds.
+- **`picture`** draws a spectrogram of a passage, with a second file underneath if you give one: the recording above the finished file shows what the edit and the mastering did.
+
 ## The script
 
 - Markdown, plain text, or Word (`.docx`, using heading styles for headings).
@@ -141,6 +158,31 @@ Nothing in the pipeline calls an AI service. If you'd like Claude to run it for 
 ## Field log
 
 Notes from real sessions: what was run, what it showed, and what changed in the code because of it. Newest first.
+
+### 2026-10-11: four recordings read loosely, two of them in the rain
+
+**The job.** Four new recordings of 7 to 10 minutes. The reader now departs from the script on purpose: added words, added sentences, sentences reworded between takes. Two were recorded while it rained. Comps off, noise reduction on. With these the set is sixteen recordings, 2 h 21 min, meant as training audio for a voice clone, so the questions were whether his wording survived, whether the rain did, and how the set stands against what ACX and ElevenLabs ask for.
+
+**What it showed.**
+
+1. *Added wording was cut in three ways, and the report showed none of them as a loss.* Three or more added words are an aside by design ("can be useless or even dangerous"). A word added at the start of a retaken sentence ("Second, it keeps improving") went out with the abandoned take before it, because its neighbour was a cut word. And a sentence reworded on the retake lost to the first take, which matched the script: "We haven't seen what the robots will do" was kept as written, and the retake's new words ("even begun to", "be capable of") were cut out of it as asides. The cuts list called all of these asides or re-reads.
+2. *A check that doesn't use the script finds them.* A retake says the abandoned words again, so they turn up in what the edit keeps straight after the cut. Words that don't are either chatter or something lost. Run over all sixteen recordings, it showed the four new ones losing wording and the twelve earlier ones losing none: all 105 of their cut stretches were retakes, false starts, or chatter.
+3. *What fixed the four* was giving punchroll the reader's own wording to follow: a text file per recording holding his last take of every line. Every line was then found, the cuts were retakes and chatter only, and `verify` found nothing but the recognizer's spellings.
+4. *The rain reached the microphone and one number hid it.* The room in the pauses was 9 to 10 dB up from 140 Hz to 4 kHz, while the noise floor, the quietest half second, still read as a quiet room. Minute by minute the room's level rose and fell with the weather. After noise reduction the pauses sat near −85 dBFS and the reader could hear the rain only because he knew it was there.
+5. *Noise reduction decides what happens to breaths.* Where the room's hiss was close to the level of a quiet breath, the breath was thinned or cut off at its start: 55 of 180 came through whole in the ten recordings made with a hissier chain. In the six made since, 103 of 108 did, at about 32 dB under the voice. Audiobook practice is to leave breaths in and never half cut one.
+6. *Clean pauses show mouth clicks.* About five a minute stood alone in the pauses within 30 dB of the file's level, usually just before the breath that leads into a sentence. Noise reduction leaves them and takes away what used to cover them.
+7. *Two trained listener models were tried and neither can rank good narration.* torchaudio's SQUIM opinion-score model gave 4.99 out of 5 to all sixteen files, and to copies spoiled with audible hiss, echo, clipping and clicks. Its objective model reacted to hiss and clicks, not to echo or clipping, and put all sixteen between 3.86 and 4.12 on a 4.5 scale.
+8. *ElevenLabs asks for ACX's numbers.* Its guide to Professional Voice Cloning gives −23 to −18 dB RMS with a true peak of −3 dB, recommends MP3 at 192 kbps, and wants two to three hours. All sixteen files pass both.
+
+**What changed.**
+
+- Every cut now carries the words in it that are not said again (`edit.not_said_again`, `unsaid` in the JSON report), and the Markdown report lists them under "Cut and not said again", in capitals.
+- `punchroll standards` checks finished files against ACX and ElevenLabs without transcribing them (`standards.py`).
+- `punchroll scorecard` scores a project's finished chapters side by side (`scorecard.py`), with the measures in `measure.py`: mouth clicks, pauses, the room and the room minute by minute, tone by octave, pitch, and what became of each breath. `--listener` adds the SQUIM objective estimate (`listen.py`).
+- `punchroll picture` draws a spectrogram of a passage, with a second file underneath (`picture.py`).
+- [docs/checking.md](docs/checking.md) says what each measures and what it can't tell you. 57 tests.
+
+**Still open.** A word or two added at the start of a retaken sentence is still cut. It now shows in the new section. Nothing removes mouth clicks. The scorecard's order weighs its measures equally, which they aren't.
 
 ### 2026-10-09, third entry: two more recordings, and two things left in the edit
 
@@ -305,7 +347,7 @@ pip install -e ".[test]"
 pytest
 ```
 
-The tests cover script parsing, the alignment rules (restarts, fillers, asides, pickups, words a retake leaves out), the check for speech the voice detector missed, a full edit-and-master pass on synthetic audio (including ad-libs at the edge of a line and the comps switch), the true-peak ceiling on a bright signal and in the MP3, the WAV's bit depth, and the command line, including which chapters `batch` skips and what `--proof` writes. They don't need the speech models.
+The tests cover script parsing, the alignment rules (restarts, fillers, asides, pickups, words a retake leaves out), the check for speech the voice detector missed, a full edit-and-master pass on synthetic audio (including ad-libs at the edge of a line and the comps switch), the true-peak ceiling on a bright signal and in the MP3, the WAV's bit depth, and the command line, including which chapters `batch` skips and what `--proof` writes. The checks are tested on made-up signals with known answers: a click in a pause and one beside a word, a room that gets noisier for a minute, a voice of known pitch, a breath left whole, thinned, and removed, a file that fails ACX on three counts, and the scorecard's ordering. They don't need the speech models, matplotlib, or PyTorch.
 
 ## Credits
 
@@ -314,3 +356,5 @@ The tests cover script parsing, the alignment rules (restarts, fillers, asides, 
 - MP3 encoding: LAME through [lameenc](https://github.com/chrisstaite/lameenc) (LGPL)
 - Number words: [num2words](https://github.com/savoirfairelinux/num2words) (LGPL)
 - ACX audio requirements: [ACX Audio Submission Requirements](https://help.acx.com/s/article/acx-audio-submission-requirements)
+- Voice-clone training audio: [ElevenLabs, Professional Voice Cloning](https://elevenlabs.io/docs/eleven-creative/voices/voice-cloning/professional-voice-cloning)
+- The scorecard's optional listener: the SQUIM objective model in [torchaudio](https://pytorch.org/audio/stable/generated/torchaudio.pipelines.SQUIM_OBJECTIVE.html) (weights CC-BY-4.0, trained on the DNS 2020 dataset)

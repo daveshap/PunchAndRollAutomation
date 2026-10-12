@@ -6,6 +6,9 @@
   punchroll verify  EDITED --script ...  re-transcribe a finished file and check it
   punchroll batch   project.toml         run clean for every chapter in a project file
   punchroll transcribe RAW...          just the word timings, as JSON
+  punchroll standards EDITED...        check finished files against ACX and ElevenLabs (no transcription)
+  punchroll scorecard project.toml     score every finished chapter side by side
+  punchroll picture FILE --at 3:08     a spectrogram of a passage, as a PNG
 """
 from __future__ import annotations
 
@@ -76,6 +79,25 @@ def main(argv=None) -> int:
     p.add_argument("audio", nargs="+")
     _common(p)
     p.add_argument("-o", "--out", default="edited")
+
+    p = sub.add_parser("standards", help="check finished files against ACX and ElevenLabs voice-clone guidance")
+    p.add_argument("audio", nargs="+", help="finished files (MP3 or WAV); wildcards are expanded")
+    p.add_argument("-o", "--out", help="also write the report to this Markdown file")
+
+    p = sub.add_parser("scorecard", help="score every finished chapter of a project side by side")
+    p.add_argument("project")
+    p.add_argument("-o", "--out", help="Markdown file to write (default: scorecard.md in the project's output folder)")
+    p.add_argument("--listener", action="store_true",
+                   help='add a trained listener\'s estimate of each file (needs pip install -e ".[listen]")')
+
+    p = sub.add_parser("picture", help="a spectrogram of a passage, as a PNG")
+    p.add_argument("audio")
+    p.add_argument("--at", default="0:00", help="where the passage starts, as M:SS or seconds (default: the start)")
+    p.add_argument("--seconds", type=float, default=12.0, help="how long a passage (default: 12)")
+    p.add_argument("--with", dest="other", help="a second file to show underneath, such as the raw recording")
+    p.add_argument("--with-at", dest="other_at", help="where the same passage starts in the second file (default: --at)")
+    p.add_argument("--top", type=float, default=10000.0, help="highest frequency shown, in Hz (default: 10000)")
+    p.add_argument("-o", "--out", help="PNG to write (default: beside the file)")
 
     a = ap.parse_args(argv)
     for stream in (sys.stdout, sys.stderr):           # never crash on a console that can't print '−'
@@ -163,7 +185,58 @@ def _run(a) -> int:
             dest.write_text(json.dumps(tr, indent=1), encoding="utf-8")
             print(f"{path}: {len(tr['words'])} words -> {dest}")
         return 0
+
+    if a.cmd == "standards":
+        from .standards import check_files, standards_markdown
+        files = [f for pat in a.audio for f in (sorted(glob.glob(pat), key=_natural) or [pat])]
+        missing = [f for f in files if not Path(f).is_file()]
+        if missing:
+            raise FileNotFoundError(f"not found: {', '.join(missing)}")
+        md = standards_markdown(check_files(files, log=lambda m: print(m, file=sys.stderr)))
+        if a.out:
+            Path(a.out).write_text(md, encoding="utf-8")
+        print(md)
+        return 0
+
+    if a.cmd == "scorecard":
+        from .scorecard import scorecard, scorecard_markdown
+        if sys.version_info >= (3, 11):
+            import tomllib
+        else:  # pragma: no cover
+            import tomli as tomllib
+        rows = scorecard(a.project, listener=a.listener)
+        if not rows:
+            raise ValueError("no chapter of this project has a finished WAV yet; run batch first")
+        md = scorecard_markdown(rows)
+        proj = tomllib.loads(Path(a.project).read_text(encoding="utf-8"))
+        dest = Path(a.out) if a.out else Path(a.project).parent / proj.get("out", "edited") / "scorecard.md"
+        dest.write_text(md, encoding="utf-8")
+        print(md)
+        print(f"Scorecard: {dest}")
+        return 0
+
+    if a.cmd == "picture":
+        from .audio import read_mono
+        from .picture import match_loudness, passage, spectrogram_png
+        x, sr = read_mono(a.audio)
+        at = _seconds(a.at)
+        panels = [(f"{Path(a.audio).name} from {a.at}", passage(x, sr, at, a.seconds), sr)]
+        if a.other:
+            y, ysr = read_mono(a.other)
+            other_at = a.other_at or a.at
+            seg = match_loudness(passage(y, ysr, _seconds(other_at), a.seconds), panels[0][1])
+            panels.append((f"{Path(a.other).name} from {other_at}, brought to the same loudness", seg, ysr))
+        dest = Path(a.out) if a.out else Path(a.audio).with_name(f"{Path(a.audio).stem} at {a.at.replace(':', '-')}.png")
+        spectrogram_png(panels, dest, top_hz=a.top)
+        print(f"Picture: {dest}")
+        return 0
     return 1
+
+
+def _seconds(text: str) -> float:
+    """'3:08.4' or '188.4' -> seconds."""
+    parts = [float(p) for p in str(text).split(":")]
+    return sum(p * 60 ** k for k, p in enumerate(reversed(parts)))
 
 
 def _natural(s: str):

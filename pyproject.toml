@@ -23,6 +23,9 @@ dependencies = [
 docx = ["python-docx>=1.1"]
 test = ["pytest>=7"]
 all = ["python-docx>=1.1", "pytest>=7"]
+# Optional and large, so not part of "all": the spectrogram pictures and the trained listener in the scorecard.
+pictures = ["matplotlib>=3.7"]
+listen = ["torch>=2.1", "torchaudio>=2.1"]
 
 [project.scripts]
 punchroll = "punchroll.cli:main"
