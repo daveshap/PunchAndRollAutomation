@@ -109,6 +109,7 @@ The report lists:
 
 - **Pickups:** lines whose kept reading still differs from the script, beyond articles, plurals, and spellings the recognizer varies on (those are listed separately as small differences).
 - **Cuts:** every removed stretch, with the words and the reason.
+- **Cut and not said again:** the words of each cut that don't turn up in what the edit keeps straight after it. A retake says the abandoned words again; what is left over is chatter, or wording the reader added that the alignment took for an aside. This check doesn't use the script. More in [checking.md](checking.md#4-what-the-edit-cut-and-never-heard-again).
 - **Pause edits** and the **edit decision list:** for each kept stretch, the source file and times and where it landed in the edited file.
 
 `punchroll verify` re-transcribes the finished file from scratch and runs the same alignment. On a clean edit it finds no restarts, and every remaining difference is either a known pickup or the recognizer mishearing.

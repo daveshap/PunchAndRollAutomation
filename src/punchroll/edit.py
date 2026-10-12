@@ -94,6 +94,26 @@ def n_major(book, read) -> int:
     return sum(1 for d in diffs(book, read) if not d["minor"])
 
 
+def not_said_again(cut: list[str], after: list[str]) -> list[str]:
+    """The words of a cut stretch that the kept words straight after it don't say again.
+
+    A retake says the abandoned words again, so they turn up in what follows. What is left over is
+    either chatter (an aside, a slip, a cut-off word) or something the reader said that the edit lost:
+    an ad-lib of three words or more, or a reworded retake that an earlier take beat by matching the
+    script better. This check doesn't use the script, so it catches what the alignment can't see.
+    Fillers and stray sounds are left out. Two words in a row must match for either to count as said
+    again, which keeps a stray "the" from vouching for a cut.
+    """
+    c = [(t, i) for i, w in enumerate(cut) if w != SOUND for t in toks(w) if t not in FILLERS]
+    a = [t for w in after for t in toks(w)]
+    said = set()
+    for blk in difflib.SequenceMatcher(None, [t for t, _ in c], a, autojunk=False).get_matching_blocks():
+        if blk.size >= 2:
+            said.update(range(blk.a, blk.a + blk.size))
+    lost = {i for k, (_, i) in enumerate(c) if k not in said}
+    return [cut[i] for i in sorted(lost)]
+
+
 def build_edit(x: np.ndarray, sr: int, words: list[dict], lines: list[Line], settings: Settings, log=print,
                take_starts=()) -> dict:
     """take_starts: timeline seconds where each recording after the first begins (pickups, sessions)."""
@@ -424,8 +444,9 @@ def build_edit(x: np.ndarray, sr: int, words: list[dict], lines: list[Line], set
             continue
         if run:
             whys = sorted({info[i]["why"] for i in range(len(hyp)) if hyp_w[i] in run and info[i]["why"]})
+            after = [words[w]["text"] for w in range(run[-1] + 1, len(words)) if w in kept_w][:max(40, 3 * len(run))]
             cuts.append({"raw": words[run[0]]["start"], "words": " ".join(words[w]["text"] for w in run),
-                         "why": ", ".join(whys)})
+                         "why": ", ".join(whys), "unsaid": not_said_again([words[w]["text"] for w in run], after)})
         run = []
     pickups, minor = [], []
     passes = defaultdict(set)

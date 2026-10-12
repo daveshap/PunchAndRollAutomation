@@ -84,6 +84,22 @@ def write_reports(out_dir: Path, name: str, res: dict, takes, metrics: dict | No
     md += ["", "## Cuts", "", "| Recorded at | Why | Words |", "|---|---|---|"]
     for c in res["cuts"]:
         md.append(f"| {where(c['raw'], takes)} | {c['why']} | {_cell(c['words'], 120)} |")
+    unsaid = [c for c in res["cuts"] if c.get("unsaid")]
+    if unsaid:
+        md += ["", "## Cut and not said again", "",
+               "Words in CAPITALS were cut and are not said again in what follows. Most are chatter, slips, or cut-off "
+               "words. Read them for anything you meant to keep: an ad-lib of three words or more is cut as an aside.", "",
+               "| Recorded at | Words |", "|---|---|"]
+        for c in unsaid:
+            left = list(c["unsaid"])
+            shown = []
+            for w in c["words"].split(" "):
+                if left and w == left[0]:
+                    shown.append(w.upper())
+                    left.pop(0)
+                else:
+                    shown.append(w.lower())
+            md.append(f"| {where(c['raw'], takes)} | {_cell(' '.join(shown), 400)} |")
     if res["comps"]:
         md += ["", "## Two-take splices", ""]
         md += [f"- Line {c['line']}: spliced before \"{c['splice_before']}\" to fix a slip in the last take" for c in res["comps"]]
