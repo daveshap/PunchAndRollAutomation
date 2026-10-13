@@ -1,10 +1,10 @@
 # Checking finished recordings
 
-`verify` checks a finished file against its script. The three commands here check it against the published standards, against the other recordings in the set, and by eye. None of them changes any audio.
+Three commands check a finished file against the published standards, against the other recordings in the set, and by eye. None of them changes any audio.
 
 ```bash
 punchroll standards edited/*.mp3            # ACX and ElevenLabs, no transcription, a few seconds a file
-punchroll scorecard book.toml               # every finished chapter side by side
+punchroll scorecard book.toml               # every finished recording side by side
 punchroll picture edited/ch01.wav --at 3:08 --with ch01.wav --with-at 3:14.5
 ```
 
@@ -47,19 +47,19 @@ The check doesn't judge three things:
 
 ## 2. Scorecard
 
-`punchroll scorecard book.toml` scores every chapter that has a finished WAV, and writes `scorecard.md` to the project's output folder. It is for choosing among recordings that all pass: which to put in a voice-clone training set, which chapter to re-record first. The edit is rebuilt from each recording to line it up with its finished file, so the recordings and their transcripts must still be where the project file says.
+`punchroll scorecard book.toml` scores every recording that has a finished WAV with its edit list (`name.edit.json`) beside it, and writes `scorecard.md` to the project's output folder. It is for choosing among recordings that all pass: which to put in a voice-clone training set, which to re-record first. The edit list lines each recording up with its finished file, so the recordings must still be where the project file says.
 
 | Column | What it measures |
 |---|---|
 | Clicks/min | Mouth clicks standing alone in pauses: a spike of 25 ms or less in 1 to 10 kHz, at least 60 ms clear of the words either side, counted when it comes within 30 dB of the file's level. |
 | Room dB | How far the quietest moments of the recording sit under the voice, 300 to 4000 Hz. Bigger is quieter. |
-| Retakes % | Lines that took two or more takes, per 100 lines. |
+| Cut % | The share of the recorded words that were cut: a rough measure of how fluent the read was. |
 | Cuts/min | Places where the edit removed something. |
 | Tone dB | How far the file's balance by octave (125 Hz to 8 kHz, while speaking) is from the middle of the set. |
 | Pitch Hz | Median pitch of the voice over the middle 100 seconds. |
 | Words/min | Pace. |
 | Breaths (whole) | Breaths found in pauses the edit kept whole, and how many of them reach the finished file whole. |
-| Order | The average of the file's rank on clicks, tone, retakes and, with `--listener`, the listener. 1 is best. |
+| Order | The average of the file's rank on clicks, tone, cut and, with `--listener`, the listener. 1 is best. |
 
 Read it with these in mind:
 
@@ -101,13 +101,3 @@ What to look for:
 - **A breath** is a soft haze with a few broad bands, mostly under 5 kHz. One that noise reduction has thinned starts abruptly and has holes in it.
 - **Echo** is smear to the right of a word's end. A dry room leaves a sharp edge.
 - **Clipping** is a bright column from bottom to top on a loud syllable.
-
-## 4. What the edit cut and never heard again
-
-Every edit report now has a section, "Cut and not said again". A retake says the abandoned words again, so they turn up in what the edit keeps straight after the cut. Words that don't are shown in capitals. Most are chatter, slips and cut-off words. Some are things the reader meant to keep:
-
-- three or more words added in a row, which are cut as an aside by design ("...can be useless OR EVEN DANGEROUS.");
-- a word added beside a take you abandoned, if you said it in the same breath as that take or in front of a retake that picks up partway through a line ("It's the bedrock..." read again as "IT IS the bedrock..."); set apart by a pause, at the start or end of a line, it is kept;
-- a sentence reworded on the retake, when the first take matched the script better.
-
-The check does not use the script, so it sees what the alignment can't. If your own wording is what counts, give punchroll a script that holds what you said (your last take of every line), and this section will hold nothing but chatter.

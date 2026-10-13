@@ -1,165 +1,128 @@
 # PunchAndRollAutomation
 
-Automatic punch-and-roll editing for audiobook narration.
+Claude Code as David Shapiro's audio engineer for narration.
 
-Record straight through. When you slip, pause and start the sentence again. `punchroll` finds every restart, keeps your last good take of each line, rebuilds the pauses, and masters each chapter to ACX specs. Everything runs on your own computer: no uploads, no API keys, no subscriptions.
+David records straight through. When he slips, he pauses and says it again. Claude transcribes the recording, reads the whole transcript, and marks it up: what is cut, what stays, and how long each pause is. `punchroll` cuts exactly what was marked, masters the result to ACX's numbers, and measures it.
 
-On a real 18.6-minute chapter read with 21 restarts, it found all 121 lines of the script, removed 274 words of false starts and asides, and produced 15.4 minutes of finished audio in 2.8 minutes of processing on two CPU cores. Re-transcribing the result found no restarts left.
+The program makes no editing decisions. It has no script to match against and no rule for what counts as a retake, a filler, or a pause that is too long. Those calls are made by reading, the way an editor makes them. What this replaced, and why, is in the [field log](#field-log).
 
-What running it on real recordings has turned up, and what changed in the code because of it, is in the [field log](#field-log).
+## Editing a recording
 
-## What it does
-
-1. **Transcribes** each recording with word timings, offline, using NVIDIA Parakeet TDT 0.6B v2 through sherpa-onnx. Sound at the voice's level that the voice detector skips (a clipped sentence start, a muttered aside) is transcribed too, so it can't sit unheard in a pause, and sound the recognizer has no word for (a cut-off syllable, a bump) is cut the way a filler is.
-2. **Aligns** the transcript to your narration script. Restarts, skipped text, fillers ("um", "sorry"), and asides are explicit moves in the alignment, so a repeated phrase, a retaken sentence, and a re-read paragraph are all recognized the same way. For every word of the script, the last reading wins. A word your retake leaves out stays out, so nothing from the abandoned take is set into the middle of it. A word or two you add at the start or end of a line is kept when it runs straight on from the line, whether the take on its other side was kept or abandoned: read "Second, it keeps spawning, no, sorry. Second, it keeps improving." and the last "Second," stays.
-3. **Comps** where it helps: if the last take of a line has a slip that an earlier take read correctly, the two are spliced at a natural pause. If you reword lines on purpose as you read, `--no-comps` keeps your last take of every line whole.
-4. **Rebuilds the pauses.** Your own pauses and breaths are kept wherever nothing was cut and the pause is in range. Where a take was cut, or a pause is too long or too short, the gap is rebuilt from your room's own tone. Every join gets a short crossfade.
-5. **Masters to ACX**: −20 dB RMS, true peak at −3.5 dB or lower (ACX's limit is −3), noise floor below −60 dB (with noise reduction if the room needs it, or whenever you ask for it), 1.5 s of room tone at the head and 3 s at the tail. Writes a WAV at your recording's bit depth and a 44.1 kHz mono 192 kbps constant-bit-rate MP3, and measures the MP3's own peak after encoding it.
-6. **Reports** what to re-record (pickups), every cut and why, the cut words that are never said again (so an ad-lib that was taken for an aside can't go unnoticed), every pause it changed, and an edit decision list.
-7. **Checks finished files** against ACX's requirements and ElevenLabs' guidance for voice-clone training audio, scores a project's chapters side by side (mouth clicks, the room, retakes, tone, breaths), and draws spectrograms. See [docs/checking.md](docs/checking.md).
-
-## Install
-
-Python 3.10 or newer on macOS, Windows, or Linux.
+**1. Transcript.**
 
 ```bash
-git clone https://github.com/daveshap/PunchAndRollAutomation
-cd PunchAndRollAutomation
-pip install -e ".[all]"
-punchroll models          # downloads about 480 MB of speech models, once
+py -3.13 -m punchroll transcript "piece 12.wav"
 ```
 
-Models go to your user cache folder (`~/.cache/punchroll`, `~/Library/Caches/punchroll`, or `%LOCALAPPDATA%\punchroll`). Set `PUNCHROLL_MODELS` to put them elsewhere.
+This writes `markup/piece 12.transcript.md`: every word in order, the time each line starts, the length of every pause, and every sound in a pause that is not a word (a breath, a click, a cut-off syllable), with its length and its level against the voice.
 
-Two extras are optional and not part of `all`, because they are large and editing doesn't need them: `pip install -e ".[pictures]"` adds matplotlib for `punchroll picture`, and `pip install -e ".[listen]"` adds PyTorch and torchaudio for the scorecard's trained listener.
+```
+3:11.7  Learning by trial and error. {0.75}
 
-**If `punchroll` isn't found after installing** (common on Windows with more than one Python): pip installed it into a Python whose `Scripts` folder isn't on your PATH, and `py` may be starting a different Python than the one pip used. pip's output names the Python it installed into. Run punchroll through that one:
+3:14.1  Instead of being shown the right answer, {0.27} the system tries actions and receives R D. {1.76}
+
+3:21.5  Instead of being shown the right answer, {0.26} the system tries actions, {0.24} receives a reward or penalty, and gradually adjusts towards whatever earns more reward. {0.25} {sound 0.11 -24} {0.10} {sound 0.18 -36} {0.21}
+```
+
+**2. Mark-up.** Claude reads it and saves a marked copy as `markup/piece 12.md`:
+
+- `~~struck through~~` is cut. Words, pauses and sounds are struck the same way.
+- `{0.75}` is a pause in seconds. Changing the number changes the pause.
+- `{0.60}` written where there was no pause puts one in.
+
+What is not struck is what the finished file holds. Above, the second line is an abandoned take, so it is struck whole:
+
+```
+3:14.1  ~~Instead of being shown the right answer, {0.27} the system tries actions and receives R D. {1.76}~~
+```
+
+**3. Cut and master.**
 
 ```bash
-py -3.13 -m punchroll models
+py -3.13 -m punchroll cut "piece 12.wav" --markup "markup/piece 12.md" --config settings.toml
 ```
 
-Every `punchroll ...` command below works the same way as `py -3.13 -m punchroll ...`.
+This cuts as marked, joins with short crossfades, masters, and writes `edited/piece 12.wav`, `.mp3`, `.report.md` (every cut and the pause left at it) and `.edit.json`. It first checks the marked file against the recording word for word and stops if they differ, so a slip in the mark-up can't move a cut. `--report-only` lists what the mark-up does and renders nothing.
 
-## Quick start
+**4. Read it back.** `punchroll transcript "edited/piece 12.wav"` gives the transcript of the finished file, to check that it says what was meant.
 
-Check what a chapter will be matched against:
+**A set of recordings.** A project file names them (see [examples/project.toml](examples/project.toml)):
 
 ```bash
-punchroll lines --script narration.md --from "Chapter 1" --to "Chapter 2"
+py -3.13 -m punchroll batch voice-clone.toml
 ```
 
-Edit and master it:
+For each recording it writes the transcript if there is no mark-up yet, cuts and masters if there is, and leaves a finished one alone unless its recording, mark-up or settings changed since.
 
-```bash
-punchroll clean ch01.wav --script narration.md --from "Chapter 1" --to "Chapter 2" --name ch01
-```
+How each step works is in [docs/how-it-works.md](docs/how-it-works.md).
 
-Results land in `./edited`: `ch01.wav`, `ch01.mp3`, `ch01.report.md`, `ch01.edl.csv`, and `ch01.report.json`.
+## What Claude goes by
 
-**Pickups.** Record the lines the report lists into a new file, in any order, then run the same command with both files, pickups last. Later recordings win, and their level is matched to the first file:
+David's instructions for the reading:
 
-```bash
-punchroll clean ch01.wav ch01-pickups.wav --script narration.md --from "Chapter 1" --to "Chapter 2" --name ch01
-```
+- His spoken words are the standard. The last take of each sentence stands, with whatever he added or reworded. A script, where there is one, is read beside the transcript; nothing is cut to make the audio match it. A job that has to follow a script word for word is a different instruction, given for that job.
+- Cut the bad stuff: abandoned takes, false starts, chatter between takes, noises.
+- "We need the longer pauses preserved for things like titles, subtitles, scene breaks."
+- "Measure twice, cut once. It's easier to cut out a pause later." When it isn't clear, it stays, and Claude says so.
+- A slip in what was said, one word for another, is reported, not patched.
 
-**Check the result** the way a proofer would. This re-transcribes the finished file, reports anything that still differs from the script, and measures the ACX specs on the file itself:
+## Mastering
 
-```bash
-punchroll verify edited/ch01.mp3 --script narration.md --from "Chapter 1" --to "Chapter 2"
-```
+−20 dB RMS, true peak at −3.5 dB or lower (ACX's limit is −3), high-pass at 70 Hz, 2:1 compression, 1.5 seconds of room tone at the head and 3 at the tail. Noise reduction follows Audacity's Noise Reduction effect and takes its three numbers; David's recordings run it at 20 dB, sensitivity 6, frequency smoothing 6, with the noise sample taken from the pauses. Output is a WAV at the recording's bit depth and a 44.1 kHz mono 192 kbps constant-bit-rate MP3, whose own peak is measured after encoding.
 
-**A whole book.** List the chapters in a project file (see [examples/project.toml](examples/project.toml)) and run them all:
-
-```bash
-punchroll batch book.toml
-```
-
-Run it again after every recording session. Chapters that are already edited are skipped unless their recordings, script section, or settings changed (`--force` redoes them anyway; `--only ch07` picks one).
-
-**Audio that is already edited and mastered.** `verify` works on any finished file, whoever made it: it recognizes the speech, matches it to the script, lists what differs, and measures the ACX specs, and it writes no audio. For a whole book, point a project file at the finished files and add `--proof`:
-
-```bash
-punchroll batch book.toml --proof
-```
-
-To see what `clean` would cut from a raw recording without rendering anything, add `--report-only` to it.
-
-**Not sure which chapter a recording is?** Transcribe it and read the first few words:
-
-```bash
-punchroll transcribe take-07.wav
-```
-
-That writes the words and their times to `edited/take-07.words.json`. The transcript is cached, so `clean` won't transcribe the file again.
+Every setting is listed in [examples/settings.toml](examples/settings.toml).
 
 ## Checking finished files
 
-Three commands look at finished audio without changing it. What each measures, the published figures behind the checks, and what the measures can't tell you are in [docs/checking.md](docs/checking.md).
-
 ```bash
-punchroll standards edited/*.mp3     # against ACX and ElevenLabs' voice-clone guidance; no transcription
-punchroll scorecard book.toml        # every finished chapter side by side, best first
-punchroll picture edited/ch01.wav --at 3:08 --with ch01.wav --with-at 3:14.5
+py -3.13 -m punchroll standards "edited/*.mp3"
+py -3.13 -m punchroll scorecard voice-clone.toml
+py -3.13 -m punchroll picture "edited/piece 12.wav" --at 3:08 --with "piece 12.wav" --with-at 3:14.5
 ```
 
-- **`standards`** measures loudness, true peak, noise floor, room tone at each end, the longest pause, the format, and how far each file's tone sits from the rest, and says which of ACX's and ElevenLabs' figures a file misses. It also adds up the set: ElevenLabs asks for 30 minutes at the least and two to three hours for the best clone.
-- **`scorecard`** is for choosing among recordings that all pass. Per chapter: mouth clicks per minute, how quiet the room was, how many lines needed a retake, how far the tone is from the set's, pitch, pace, and how many breaths came through whole. `--listener` adds a trained model's estimate of how clean each file sounds.
-- **`picture`** draws a spectrogram of a passage, with a second file underneath if you give one: the recording above the finished file shows what the edit and the mastering did.
+- **`standards`** measures loudness, true peak, noise floor, room tone at each end, the longest pause, the format, and how far each file's tone sits from the rest, against ACX's requirements and ElevenLabs' guidance for voice-clone training audio. It also adds up the set: ElevenLabs asks for 30 minutes at the least and two to three hours for the best clone.
+- **`scorecard`** is for choosing among recordings that all pass. Per recording: mouth clicks per minute, how quiet the room was, how much was cut, how far the tone is from the set's, pitch, pace, and how many breaths came through whole. `--listener` adds a trained model's estimate of how clean each file sounds.
+- **`picture`** draws a spectrogram of a passage, with a second file underneath: the recording above the finished file shows what the edit and the mastering did.
 
-## The script
+What each measures, and what it can't tell you, is in [docs/checking.md](docs/checking.md).
 
-- Markdown, plain text, or Word (`.docx`, using heading styles for headings).
-- It should contain exactly what you say aloud, headings included: "Chapter One", "Part One", the chapter title. Words you say that aren't in the script are treated as asides and cut, and script lines you didn't read are reported.
-- Footnote markers and footnote text, tables, images, code blocks, links, and `<!-- comments -->` are cleaned out automatically. Numbers are compared the way they're spoken ("1810s" matches "eighteen tens", "$52,000" matches "fifty-two thousand dollars", "8:00 a.m." matches "eight a.m.").
-- Select a chapter with `--from` and `--to` (text from its headings) or `--lines 115-143`.
+## Set-up
 
-A Word manuscript works as it is. If you'd rather mark up a Markdown copy, [Pandoc](https://pandoc.org) makes one: `pandoc manuscript.docx -t markdown --wrap=none -o narration.md`. Pandoc is a separate program that pip does not install, and punchroll doesn't need it.
+```bash
+pip install -e ".[all]"
+py -3.13 -m punchroll models
+```
 
-## Recording for it
-
-The short version: when you slip, keep recording, pause for a breath, and restart the sentence from its beginning. Details, including pickups and session setup, are in [docs/recording.md](docs/recording.md).
-
-## Speed and memory
-
-- Transcription runs at 7 to 8 times real time on 2 CPU cores, and faster with more (`--threads`).
-- Transcripts are cached per recording (in `~/.cache/punchroll/transcripts`, or `PUNCHROLL_CACHE`), so changing settings or adding pickups only transcribes what's new.
-- Measured on 2 CPU cores: an 18.6-minute chapter (44.1 kHz MP3) took 2.8 minutes the first time and 0.5 minutes on re-runs, peaking at 0.7 GB of memory on re-runs. A 56-minute chapter (48 kHz, 24-bit WAV, 480 MB) took 8.3 minutes the first time and 1.7 minutes on re-runs, peaking at 2.3 GB while transcribing and 1.7 GB after.
-- Measured on 8 CPU cores (8 threads): transcription ran at 16 to 17 times real time. A 9-minute recording took about half a minute to transcribe and another 20 seconds to edit and master.
-- For chapters much longer than 90 minutes, record and edit in sections.
-- `--max-minutes N` stops transcription after N minutes and exits with code 3; running the same command again resumes where it stopped. Useful in shells with a time limit; leave a couple of minutes of headroom for editing and mastering.
-
-## Settings
-
-Pause rules, loudness targets, and alignment costs can be changed with `--config settings.toml`. Every setting and its default is listed in [examples/settings.toml](examples/settings.toml), and the reasoning is in [docs/how-it-works.md](docs/how-it-works.md).
-
-For mastering, `limiter_ceiling_db` is the true-peak ceiling (−3.5 dB, half a decibel under ACX's limit) and `wav_bits` sets the WAV master's bit depth (your recording's own by default).
-
-Noise reduction is automatic unless you say otherwise: it runs only when the noise floor would end above −62 dB, and turns the room's noise down by 12 dB. `noise_reduction = "on"` runs it on every chapter and `"off"` on none. `noise_reduction_db`, `noise_sensitivity`, and `noise_smoothing` are the three numbers Audacity's Noise Reduction effect asks for and mean the same here, so settings you already trust carry over. There is no noise sample to select: it is taken from the pauses. A hum at the pitch of your voice still passes while you are speaking, where your voice covers it, and is down by the full amount in every pause. More in [docs/how-it-works.md](docs/how-it-works.md#5-master).
-
-Two settings decide how much of your own wording survives when you depart from the script. `comps = false` (or `--no-comps` on the command line) keeps the last take of every line whole instead of splicing in part of an earlier one. That includes its end: if your retake drops the last few words of a sentence and reads on, they stay dropped. `adlib` under `[pauses]` is how closely an unscripted word must follow or lead into a line to count as part of it (0.25 seconds by default). Beside a take you abandoned, it is also the least pause that sets such a word apart from that take.
-
-## Running it with an AI agent (optional)
-
-Nothing in the pipeline calls an AI service. If you'd like Claude to run it for you:
-
-- **Claude Code** (in a terminal, or the Code tab of the Claude desktop app) works directly on your computer: it can install this, run chapters, read the reports, and fix problems, with no time limit per command.
-- **Claude in Cowork mode**, with your computer linked and the recordings folder connected, can run it inside that folder. Use `--max-minutes` so long transcriptions finish across several calls.
-
-## Limits
-
-- The recognizer sometimes mishears names, numbers, and short words, so pickups are places to listen, not verdicts. It formats numbers by context: "$450" has come back as "$450,000" right after a larger figure was read.
-- A sound at the voice's level with no recognizable words in it (a cut-off syllable, a cough, a bump) is cut and listed in the report as a stray sound, provided it stands clear of the words around it. One that runs into a word, or sits more than 25 dB under the voice, is not caught. One that stands where the script has a word nothing else was heard for is kept as that word, and the report says so.
-- Cuts are placed in quiet where there is any. When you stumble and start again without a pause, the cut goes just ahead of the re-read's first word, in whatever sound is there, and the report doesn't mark that join.
-- Beside a take you abandon, a word you added is told from that take's last word, and from chatter, mainly by its pauses. One or two unscripted words that follow a pause and run straight into the retake are kept, so a stray word there is kept too and listed as a pickup ("Right, it keeps improving"), unless it is "no" or one of the line's own first words. An added word is cut when you say it in the same breath as the take you abandon, and when it stands in front of a retake that picks up partway through a line.
-- A retake that rewords its first word ("It's the bedrock..." read again as "It is the bedrock...") is taken to start at its second word. The first take's "It's" is kept in front of it and the retake's "It is" is cut.
-- English only (Parakeet v2 is an English model).
-- If the script repeats a sentence word for word, a retake of it can occasionally be matched to the wrong instance.
-- No music beds or sound effects; this is for narration.
+On David's PC the package is installed into Python 3.13, so it runs as `py -3.13 -m punchroll`. The speech models (about 480 MB) go to `%LOCALAPPDATA%\punchroll`. `pip install -e ".[pictures]"` adds matplotlib for `picture`, and `".[listen]"` adds PyTorch for the scorecard's listener.
 
 ## Field log
 
 Notes from real sessions: what was run, what it showed, and what changed in the code because of it. Newest first.
+
+Every entry below the first describes the rule-based editor (`clean`, `verify`, the alignment, comps, pause ranges) that the first entry removed. They are kept as the record of what that approach got right and wrong. The transcription, the mastering, and the measuring commands they describe are still in use.
+
+### 2026-10-13, second entry: the rules come out
+
+**What happened.** An audiobook engineer ran the code as it then stood over other narrators' books and sent seven points. Four were about the reports. Three were audio the editor should have left alone:
+
+1. *An unscripted "uh" inside a character's dialogue was cut,* because fillers were always cut.
+2. *A scene break's three-second pause came out at 1.1 seconds,* because the pause ranges knew sentences, paragraphs and headings and nothing else.
+3. *"High above" from one sentence was set into another sentence read nine minutes earlier,* because a repeated phrase was taken for a retake however far back it reached. The same thing was reproduced on a made-up chapter.
+
+Two days before, David's own recordings had gone the same way: three or more words he added were cut as an aside, and a sentence he reworded on the retake lost to the first take because the first take matched the script.
+
+Each was a fixed rule meeting a case it didn't fit. Claude's first answer was more rules: a dearer price for a retake found far back, a pattern for scene-break marks, a switch for fillers. David's answer was to stop. Claude reads the whole transcript and decides every cut and every pause, and the program only carries that out.
+
+**What changed.**
+
+- Removed: the alignment and its costs (`align.py`), the last-take and ad-lib rules, comps and pause ranges (`edit.py`), script parsing (`text.py`), and the script comparison (`verify.py`), with the commands `clean`, `verify`, `lines` and `transcribe`.
+- Added: `pieces.py` lays the recording out as words, quiet, and the sounds between words. `markup.py` writes that as a transcript and reads the marked-up copy back. `cut.py` applies it. The commands are `transcript` and `cut`, and `batch` does both across a project.
+- The scorecard reads an edit list saved beside each finished file (`name.edit.json`) instead of rebuilding the edit. The sixteen recordings finished before this each had theirs saved from the old editor, and each matched its finished file to within 0.01 seconds.
+- `standards`, `scorecard`, `picture`, the transcription and the mastering are as they were. 37 tests.
+
+**The first recording done this way.** Recording 11: 8.2 minutes, a glossary read with six abandoned takes. Reading the transcript found the six, among them one called off with "No, I don't like that" and one that trailed into "Uh uh", and two loud clicks in pauses (5 and 10 dB under the voice). Marked, cut and mastered, it is 7.4 minutes and passes ACX's figures. Its finished file transcribes to the same 998 words as the master the old editor had made from a hand-written text of what was said. The difference between the two is the pauses: here they are his own, and there they were trimmed to ranges.
+
+**Still open.** Claude can't hear. A sound in a pause is judged by its length, its level and where it sits, so a breath kept or a click cut is a judgement worth a listen. A pickup recorded in a second file can't be moved into place by the mark-up, which keeps the recording's order.
 
 ### 2026-10-13: a word added where a retake begins
 
@@ -362,22 +325,3 @@ py -3.13 -m punchroll verify edited/take-01.mp3 --script script.md --from "Title
 ### 2026-10-07: first release
 
 An 18.6-minute chapter read (44.1 kHz MP3, 21 restarts): 121 of 121 lines found, 274 words of false starts and asides removed, one two-take splice, 15.4 minutes out, and no restarts left on `verify`. A test pickups file replaced two of the six flagged lines. A 56-minute 48 kHz WAV ran in 8.3 minutes on two cores. Timings for both are under Speed and memory.
-
-## Development
-
-```bash
-pip install -e ".[test]"
-pytest
-```
-
-The tests cover script parsing, the alignment rules (restarts, fillers, asides, pickups, words a retake leaves out), the check for speech the voice detector missed, a full edit-and-master pass on synthetic audio (including ad-libs at the edge of a line, beside a kept take and beside a cut one, and the comps switch), the true-peak ceiling on a bright signal and in the MP3, the WAV's bit depth, and the command line, including which chapters `batch` skips and what `--proof` writes. The checks are tested on made-up signals with known answers: a click in a pause and one beside a word, a room that gets noisier for a minute, a voice of known pitch, a breath left whole, thinned, and removed, a file that fails ACX on three counts, and the scorecard's ordering. They don't need the speech models, matplotlib, or PyTorch.
-
-## Credits
-
-- Speech recognition: [NVIDIA Parakeet TDT 0.6B v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) (CC-BY-4.0), run with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0)
-- Voice activity detection: [Silero VAD](https://github.com/snakers4/silero-vad) (MIT)
-- MP3 encoding: LAME through [lameenc](https://github.com/chrisstaite/lameenc) (LGPL)
-- Number words: [num2words](https://github.com/savoirfairelinux/num2words) (LGPL)
-- ACX audio requirements: [ACX Audio Submission Requirements](https://help.acx.com/s/article/acx-audio-submission-requirements)
-- Voice-clone training audio: [ElevenLabs, Professional Voice Cloning](https://elevenlabs.io/docs/eleven-creative/voices/voice-cloning/professional-voice-cloning)
-- The scorecard's optional listener: the SQUIM objective model in [torchaudio](https://pytorch.org/audio/stable/generated/torchaudio.pipelines.SQUIM_OBJECTIVE.html) (weights CC-BY-4.0, trained on the DNS 2020 dataset)

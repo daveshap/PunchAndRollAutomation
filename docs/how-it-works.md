@@ -1,88 +1,66 @@
 # How it works
 
-`punchroll clean` runs six stages. Everything but the speech model is plain numpy and scipy.
+Claude does the editing. The program does three things around that: it writes down what is in the recording, it carries out the mark-up exactly, and it masters the result. It makes no decision about the reading.
 
 ## 1. Transcribe
 
 Silero VAD finds the stretches of speech. Neighboring stretches are grouped into chunks of up to 20 seconds, because a short phrase decoded on its own can come back empty while the same words decoded with their neighbors don't. Each chunk is transcribed by NVIDIA Parakeet TDT 0.6B v2 (int8 ONNX, through sherpa-onnx), which gives a timestamp for every token. Tokens are joined into words; punctuation is attached to a word without stretching its end time.
 
-The editor treats whatever lies between two recognized words as a pause and keeps it, so speech that goes unheard would stay in the edit. Two checks guard against that:
+Two checks keep speech from going unheard:
 
-- **Sound the detector left out.** The detector sometimes starts a stretch late, ends one early, or misses a short phrase or a muttered aside between two pauses. Any sound that stays within 25 dB of the voice's level for 0.15 seconds or more, and comes within 15 dB of it, is added to the detector's stretches. Breaths and clicks fall short of that. In a room too noisy to tell the voice from the background by level, the detector's stretches are used as they are.
+- **Sound the detector left out.** The detector sometimes starts a stretch late, ends one early, or misses a short phrase or a muttered aside between two pauses. Any sound that stays within 25 dB of the voice's level for 0.15 seconds or more, and comes within 15 dB of it, is added to the detector's stretches.
 - **A stretch that comes back empty.** The recognizer can drop a short stretch at the end of a long chunk. A stretch with no words is decoded again on its own.
 
-A third check runs when the edit is built, because some sound never gets a word however it is decoded. The recognizer smooths a cut-off syllable out of its text ("Th— The easy things were always the hard part" comes back as the sentence alone), and it has no word for a bump or a cough.
+Every finished chunk is written to the transcript cache immediately, so an interrupted run resumes where it stopped, and a finished transcript is reused whenever the same recording is opened again.
 
-- **Sound that no word covers.** Any sound that stays within 25 dB of the voice's level for 0.1 seconds or more, comes within 15 dB of it, and touches no recognized word (each word's time widened by 0.08 seconds) is entered in the transcript as `[sound]`. The alignment treats it as a filler, so it is cut, and the report lists it as a stray sound. The exception is a sound standing where the script has a word that nothing else was heard for: there it costs less to read it as that word than to cut it and count the word missing, so it stays and the report shows `read '[sound]' for` that word. A word whose own reported time holds no sound has had its time misplaced by the recognizer, and sound within 0.35 seconds of such a word is left alone.
+## 2. Lay the recording out as pieces
 
-Every finished chunk is written to the transcript cache immediately, so an interrupted run resumes where it stopped, and a finished transcript is reused whenever the same recording is edited again.
+The recognizer's word times can swallow the silence after a word, so the edges are measured from the audio: 5 ms energy frames, the room's own level taken from the frames with no speech, and "quiet" defined as less than 12 dB above that.
 
-## 2. Align, allowing restarts
+From the first word to the last, the recording becomes one unbroken run of pieces (`pieces.py`):
 
-Script and transcript are reduced to the same tokens: lowercase, accents removed, dashes and other punctuation treated as spaces, numbers spelled out the way they're read (years, decades, ordinals, percentages, money, clock times), and the recognizer's `<unk>` (a sound it can't spell) dropped. Compounds are reconciled in both directions ("ChatGPT" vs "chat GPT", "cow paths" vs "cowpaths").
+- **Words.** Each runs from where the voice starts to where it stops.
+- **Quiet.** The quiet stretches between words.
+- **Sounds.** Anything between words that rises out of the quiet and is not a recognized word: a breath, a mouth click, a bump, a cut-off syllable. Each is given its length and its loudest moment in dB against the voice. A flicker shorter than 0.04 seconds and more than 30 dB under the voice is the room's own noise and stays part of the quiet.
 
-The transcript is then consumed in order while a pointer moves through the script. Each move has a cost, in tenths:
+A sound at the voice's own level that the recognizer gave no word for (it smooths "Th— The easy things" into the sentence alone, and has no word for a cough) is found the same way and listed as a sound.
 
-| Move | Meaning | Cost |
-|---|---|---|
-| match | the spoken word is the script word | 0 |
-| near match | toward / towards, assistant / assistants | 3 |
-| substitution | a different word in its place | 11 |
-| insertion | a word not in the script | 10 |
-| filler | um, uh, sorry, okay | 4 |
-| edge insertion | chatter before the first or after the last word | 6 |
-| deletion | a script word that wasn't read | 10 |
-| restart | the pointer jumps back to any earlier word | 9 |
-| skip | the pointer jumps forward | 40 |
+## 3. The transcript and the mark-up
 
-The cheapest path through all of the spoken words is found exactly by dynamic programming (integer costs, one int32 per spoken-token-by-script-token cell). Two choices in the table do most of the work:
+`punchroll transcript` writes the pieces out as text (`markup.py`), one run of speech to a line, each line starting with its time in the recording:
 
-- A restart costs less than one inserted word, so a repeated word, phrase, sentence, or paragraph is explained as a restart rather than as extra words.
-- A substitution costs a little more than an insertion, so the stray word in front of a restart ("the office workers of the eighteen— the office workers of the 1980s") is explained as an aside and cut, not passed off as a misread of the next word.
+```
+3:11.7  Learning by trial and error. {0.75}
 
-Where a new recording starts (a pickup file, the next session), the pointer may jump anywhere at no cost, and after the last recording it may jump to the end. That's what lets a pickup recorded after the chapter replace the line it re-reads.
+3:14.1  Instead of being shown the right answer, {0.27} the system tries actions and receives R D. {1.76}
 
-## 3. Keep the last take
+3:21.5  Instead of being shown the right answer, {0.26} the system tries actions, {0.24} receives a reward or penalty, and gradually adjusts towards whatever earns more reward. {0.25} {sound 0.11 -24} {0.10} {sound 0.18 -36} {0.21}
+```
 
-For every script word, the last spoken word aligned to it wins. Tokens it replaces are cut ("re-read later"). Then:
+`{0.75}` is a pause of 0.75 seconds. `{sound 0.11 -24}` is a sound of 0.11 seconds, 24 dB under the voice. A gap shorter than 0.15 seconds with no sound in it is not listed; it goes with the word after it.
 
-- A word that a later take read straight past is cut with the rest of the earlier take. If the first take had "and a truck driver" and the retake has "and truck driver", the first take's "a" is not set into the middle of the retake; the report lists the line as missing that word. The same holds when the recognizer misses a short word in the retake: the retake stays in one piece. A take that stops partway and moves on still replaces only the words it re-read.
-- A misread word just before a mid-line restart, which the restart didn't re-read, is dropped: it's what the reader stopped to fix.
-- Inserted words are kept only as short ad-libs (one or two words): inside a kept stretch of a single line, or at the edge of a line when they run straight on from the kept word beside them, with less than 0.25 seconds between ("until they were cheap enough.", "And groceries don't fall."). Cutting those would mean cutting where there is no pause. Fillers, asides that stand apart between lines, and anything outside the text are cut.
-- The take on the other side of such a word may be one that was cut. In "Second, it keeps spawning, no, sorry. Second, it keeps improving." the last "Second," opens the retake and is kept, and in "...its golden age yet. We haven't seen, no. We haven't even begun..." so is "yet." Most unscripted words beside a cut take are not ad-libs, so four more things are asked there:
-  - *The word stands clear of the cut take.* Walking from it toward that take, a pause of 0.25 seconds or more must come before any cut word is reached. Fillers and stray sounds on the way are passed over: they are neither a pause nor a word. A word that runs on from the abandoned take and straight into the retake ("...it keeps spawning— it keeps improving") is that take's last word.
-  - *It begins or ends its line.* Nothing else kept of the line comes before a word that leads in, or after one that runs on. Where a take picks up partway through a line, the word in front of it is as likely a second thought as an ad-lib. That also covers a retake that rewords its first word ("It's the bedrock..." read again as "It is the bedrock..."): the alignment takes such a retake to start at its second word and leaves the first take's "It's" standing, and keeping "It is" as well would put both in the edit.
-  - *It isn't one of the line's own words said twice.* A word that matches the kept word beside it, or the next one along, is a false start ("The— The end comes."). Through most of a script the alignment reads a false start as a restart and this rule never sees it. At the first and last lines, where unscripted words are priced as chatter, it reads one as chatter.
-  - *It isn't "no".* Beside a cut take that is the reader calling the take off.
+Claude reads the whole transcript and saves a marked copy:
 
-**Comps.** If the last take of a line still differs from the script and an earlier take read that part correctly, the line is assembled from the two, split at a word boundary where both takes had a natural pause of at least 0.12 seconds. It's used only when it reduces the number of real differences. If you reword lines on purpose as you read, turn comps off (`--no-comps`, or `comps = false` in the settings): the last take of every line is then kept whole, and the rewording is only listed in the report.
+| Mark | Meaning |
+|---|---|
+| `~~struck through~~` | Cut. Words, pauses and sounds are struck the same way. |
+| `{0.75}` changed to `{0.40}` | Make this pause 0.40 seconds. |
+| `{0.60}` written where there was no pause | Put one in. |
 
-With comps off, "whole" covers the end of a sentence too. A take that stops partway through a sentence and reads on into the next one has dropped the rest ("...including benefits, for one shift a day. That doesn't make sense, I'm cutting that. ...including benefits. In 2024..."), and the earlier take's ending is not put back after it. With comps on, the earlier ending still completes the line, since the script's words are then what counts.
+What is not struck is what the finished file holds. In the example the second line is an abandoned take, so it is struck whole, pause included, and the 0.75-second pause before it becomes the pause before the retake.
 
-## 4. Rebuild the pauses
+The words themselves must stay in the file as written, struck or not. `punchroll cut` checks the marked file against the recording word for word and stops if they differ, naming the line, so a slip in the mark-up cannot move a cut.
 
-Recognizer word times can swallow the silence after a word, so pauses are measured from the audio: 10 ms energy frames, a noise floor estimated from non-speech frames, and "quiet" defined as less than 12 dB above that floor.
+## 4. Cut
 
-Kept words are grouped into pieces: runs of consecutive recorded words within one line. Between pieces:
+`cut.py` carries the mark-up out:
 
-- **Nothing was cut, and the pause is in range:** left exactly as recorded, breaths included.
-- **Nothing was cut, but the pause is out of range:** quiet is removed from the middle of the longest quiet stretch (mouth clicks under 60 ms are bridged), or room tone is added in its middle.
-- **A take was cut:** the end of the earlier piece and the start of the later one are trimmed to their quiet edges, and the gap is rebuilt with room tone to a target length.
+- **Nothing struck and no number changed between two words:** the audio is left exactly as recorded, breaths included.
+- **A pause made shorter:** quiet is taken out of its middle. **Made longer:** room tone is let into its middle.
+- **Something struck:** the audio leaves the recording after the last kept word and comes back at the next one. The pause between them is the sum of the pauses left unstruck between the two. It is built from the recording's own quiet beside each word, with room tone added only if more was asked for than the recording has there.
+- **Even where every pause at a cut was struck,** 0.05 seconds of the room is kept after the earlier word and 0.03 before the later one, so no word is clipped.
 
-Default ranges, in seconds (min, max, target when rebuilt):
-
-| Between | Range | Rebuilt |
-|---|---|---|
-| sentences in a paragraph | 0.30 to 1.10 | 0.55 to 0.90, from the original pause |
-| paragraphs | 0.80 to 1.70 | 1.20 |
-| "Chapter One." and what follows | 0.80 to 1.50 | 1.00 |
-| a heading and body text | 1.50 to 2.50 | 2.00 |
-| two headings | 1.00 to 2.00 | 1.50 |
-| body text and the next heading | 1.80 to 3.00 | 2.20 |
-| pieces of one sentence | | 0.12 to 0.45, from the original pause |
-| head and tail of the file | | 1.5 and 3.0 |
-
-Room tone is taken from the recording itself: half-second stretches with no speech, near the 30th percentile of their levels (typical, not the quietest), with the fewest clicks, crossfaded together. Every join in the output is an 8 ms equal-gain crossfade.
+Room tone is taken from the recording itself: half-second stretches with no speech, near the 30th percentile of their levels (typical, not the quietest), with the fewest clicks, crossfaded together. Every join is an 8 ms crossfade. The file starts with `head` seconds of room tone and ends with `tail` seconds (1.5 and 3.0 unless the settings say otherwise).
 
 ## 5. Master
 
@@ -108,13 +86,11 @@ The WAV master is written at the bit depth the recording came in at (16 bits at 
 
 RMS, true peak (of the WAV and of the MP3), and noise floor are reported against ACX's limits. The peak passes on the true peak, not on the highest sample.
 
-## 6. Report and verify
+## 6. Report
 
-The report lists:
+`punchroll cut` writes two files beside the audio:
 
-- **Pickups:** lines whose kept reading still differs from the script, beyond articles, plurals, and spellings the recognizer varies on (those are listed separately as small differences).
-- **Cuts:** every removed stretch, with the words and the reason.
-- **Cut and not said again:** the words of each cut that don't turn up in what the edit keeps straight after it. A retake says the abandoned words again; what is left over is chatter, or wording the reader added that the alignment took for an aside. This check doesn't use the script. More in [checking.md](checking.md#4-what-the-edit-cut-and-never-heard-again).
-- **Pause edits** and the **edit decision list:** for each kept stretch, the source file and times and where it landed in the edited file.
+- `name.report.md`: the ACX measures, every cut in order with the words that went and the pause now standing there, and every pause whose length was changed.
+- `name.edit.json`: the same, plus the edit list (which stretch of the recording sits where in the finished file). The scorecard reads it.
 
-`punchroll verify` re-transcribes the finished file from scratch and runs the same alignment. On a clean edit it finds no restarts, and every remaining difference is either a known pickup or the recognizer mishearing.
+To read a finished file back, run `punchroll transcript` on it: the result is the same kind of transcript, and anything still wrong in it shows the way it did in the recording.
