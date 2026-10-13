@@ -99,9 +99,9 @@ On David's PC the package is installed into Python 3.13, so it runs as `py -3.13
 
 Notes from real sessions: what was run, what it showed, and what changed in the code because of it. Newest first.
 
-Entries from 11 October and earlier describe the rule-based editor (`clean`, `verify`, the alignment, comps, pause ranges) that was removed on 13 October. They are kept as the record of what that approach got right and wrong. The transcription, the mastering, and the measuring commands they describe are still in use.
+Every entry below the first describes the rule-based editor (`clean`, `verify`, the alignment, comps, pause ranges) that the first entry removed. They are kept as the record of what that approach got right and wrong. The transcription, the mastering, and the measuring commands they describe are still in use.
 
-### 2026-10-13: the rules come out
+### 2026-10-13, second entry: the rules come out
 
 **What happened.** An audiobook engineer ran the code as it then stood over other narrators' books and sent seven points. Four were about the reports. Three were audio the editor should have left alone:
 
@@ -123,6 +123,27 @@ Each was a fixed rule meeting a case it didn't fit. Claude's first answer was mo
 **The first recording done this way.** Recording 11: 8.2 minutes, a glossary read with six abandoned takes. Reading the transcript found the six, among them one called off with "No, I don't like that" and one that trailed into "Uh uh", and two loud clicks in pauses (5 and 10 dB under the voice). Marked, cut and mastered, it is 7.4 minutes and passes ACX's figures. Its finished file transcribes to the same 998 words as the master the old editor had made from a hand-written text of what was said. The difference between the two is the pauses: here they are his own, and there they were trimmed to ranges.
 
 **Still open.** Claude can't hear. A sound in a pause is judged by its length, its level and where it sits, so a breath kept or a click cut is a judgement worth a listen. A pickup recorded in a second file can't be moved into place by the mark-up, which keeps the recording's order.
+
+### 2026-10-13: a word added where a retake begins
+
+**The job.** The item left open on 11 October. A general-purpose technology, says the script, "has three features. It's pervasive, spreading across many sectors. It keeps improving over time." The reader said: "...three features. First, it's pervasive, spreading across many sectors. Second, it keeps spawning, no, sorry. Second, it keeps improving over time." The edit kept "First," and cut the last "Second,", so the finished audio counted "First, ... And third, ...".
+
+**What it showed.**
+
+1. *The rule for added words looked only between two kept lines.* "First," sat between two lines that were both kept. The last "Second," had a cut word before it, which classed it as part of a re-read whatever the pauses around it.
+2. *The same thing happens at the end of a sentence.* Another recording of that day has "And AI hasn't even entered its golden age yet." and "a national fund that pays every citizen dividends." Each added word ran straight on from its sentence. The next sentence was then started, abandoned, and read again, and the added word went out with the abandoned take.
+3. *The pauses tell an added word from the end of an abandoned take.* In the sixteen recordings the edit picks up after a cut 128 times. By the recognizer's word times, 121 of those come a second or more after the last cut word and 125 half a second or more. Of the three that come sooner, one is a stumble with no pause ("with c, the, with the coalitions") and two follow a stray sound. So an unscripted word that runs on from the cut take belongs to it, and one that follows a pause and runs into the retake opens the retake. A filler between two words is not a pause: "no, sorry, that's wrong" is all chatter.
+4. *This reader calls a take off with "no".* Ten times in the sixteen recordings ("No, sorry.", "No, that's wrong.", "No, hang on."). Once it ran straight into the next attempt ("...isn't immune. No, even our..."), which is where an added word would be.
+5. *A retake that rewords its first word is taken to start at its second.* "It's the bedrock arrangement of civilization" was read again as "It is the bedrock arrangement of civilization". The alignment explains "It is" as two unscripted words in front of a retake that starts at "the", which costs a little less than a misread, so the first take's "It's" stays as the last reading of that word. Keeping "It is" as an added word there would have put "It's It is" in the finished audio.
+6. *The case that started this only just passes.* The pause between the last "Second," and "it" is 0.244 seconds, against a limit of 0.25.
+
+**What changed.**
+
+- `edit.py`: the rule for ad-libs at the edge of a line also looks at unscripted words beside a take that was cut. One or two of them are kept when they run straight on from, or into, a kept word (the same 0.25 seconds and the same two-word limit), provided they stand clear of the cut take: walking from them toward it, a pause of 0.25 seconds or more comes before any cut word, fillers and stray sounds aside. They must begin or end their line, so a retake that picks up partway through a line is left as it was. "No" is never kept this way.
+- Nor is a word that says the line's own first or last words again. That is a false start ("The— The end comes."), and at the first and last lines of a script the alignment takes one for chatter instead of a restart. None of the sixteen recordings has one there. It turned up when random readings were run through the old and the new code side by side.
+- The sixteen recordings were rebuilt. As they were edited, twelve against the written script and four against the reader's own wording, 111 runs of unscripted words sit beside a cut take, 75 of them one or two words long, and no edit list changed. Set against the written script instead, the four loose recordings now keep "Second,", "yet." and "dividends.", and nothing else differs. With comps on the result is the same. 62 tests.
+
+**Still open.** The retake that rewords its first word (item 5) is edited as before: the earlier take's first word is kept and the retake's own opening is cut. A stray word that follows a pause and runs straight into a retake is kept as an added word, unless it is "no". A word added in the same breath as the take being abandoned is cut with it. And a reader who leaves a beat after "Second," loses it: `adlib` is the setting to raise.
 
 ### 2026-10-11: four recordings read loosely, two of them in the rain
 
