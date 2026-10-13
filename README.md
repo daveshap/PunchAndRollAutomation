@@ -4,7 +4,7 @@ Claude Code as David Shapiro's audio engineer for narration.
 
 David records straight through. When he slips, he pauses and says it again. Claude transcribes the recording, reads the whole transcript, and marks it up: what is cut, what stays, and how long each pause is. `punchroll` cuts exactly what was marked, masters the result to ACX's numbers, and measures it.
 
-The program makes no editing decisions. It has no script to match against and no rule for what counts as a retake, a filler, or a pause that is too long. Those calls are made by reading, the way an editor makes them. What this replaced, and why, is in the [field log](#field-log).
+The program makes no editing decisions. It never cuts to match a script, and it has no rule for what counts as a retake, a filler, or a pause that is too long. Those calls are made by reading, the way an editor makes them. What this replaced, and why, is in the [field log](#field-log).
 
 ## Editing a recording
 
@@ -81,17 +81,27 @@ The report is the same in all three:
 
 The manuscript can be Markdown, plain text, or a Word file. Numbers are compared the way they are spoken ("1810s" and "eighteen tens", "$52,000" and "fifty-two thousand dollars", "World War II" and "World War two").
 
-For David's own recordings none of this is used: his spoken words are the standard.
 
-## What Claude goes by
+## What David has said about the edit
 
-David's instructions for the reading:
+His words, as he wrote them:
 
-- His spoken words are the standard. The last take of each sentence stands, with whatever he added or reworded. A script, where there is one, is read beside the transcript; nothing is cut to make the audio match it. A job that has to follow a script word for word is a different instruction, given for that job.
-- Cut the bad stuff: abandoned takes, false starts, chatter between takes, noises.
-- "We need the longer pauses preserved for things like titles, subtitles, scene breaks."
-- "Measure twice, cut once. It's easier to cut out a pause later." When it isn't clear, it stays, and Claude says so.
-- A slip in what was said, one word for another, is reported, not patched.
+- "what I actually say should ALWAYS take precedence."
+- "that means YOU DECIDE, the LLM, exactly what to cut, and what not to cut, and where the pauses should be kept."
+- "the point of this automation is just the automation of cutting bad stuff and quickly mastering."
+- "we need the longer pauses preserved for things like titles, subtitles, scene breaks, etc"
+- "as they say measure twice cut once it's easier to cut out a pause later I think."
+
+Left open by him, and still open: "we will need to do some thinking or maybe have a whitelist or a switch that says "follow script verbatim"". No whitelist or switch has been built. What exists is the manuscript report above.
+
+## How Claude goes about it
+
+These are Claude's own working habits. They are not David's instructions.
+
+- The last take of each sentence is kept, with whatever was added or reworded in it.
+- What gets struck: abandoned takes, false starts, chatter between takes, and small noises standing alone in a pause.
+- When there is a script, it is read beside the transcript.
+- Where a cut or a pause length is a judgement call, David is told which ones.
 
 ## Mastering
 
