@@ -16,6 +16,7 @@ from .markup import read_markup, write_transcript
 from .master import master
 from .models import transcripts_dir
 from .pieces import Room, stray_sounds
+from .proof import compare
 from .report import write_reports
 
 
@@ -59,8 +60,12 @@ def finished(out_dir, name, inputs, mp3=True) -> bool:
 
 
 def cut_and_master(audio, markup, out_dir, name=None, settings: Settings | None = None, mp3=True,
-                   report_only=False, log=print) -> dict:
-    """Cut the recording as its marked-up transcript says, master it, and write the files and the report."""
+                   report_only=False, log=print, lines=None, script="") -> dict:
+    """Cut the recording as its marked-up transcript says, master it, and write the files and the report.
+
+    lines: the manuscript's lines for this recording, if there is a manuscript. The report then also sets
+    the words that were kept beside it. That is a report only: it changes nothing about the cut.
+    """
     settings = settings or Settings()
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -71,6 +76,12 @@ def cut_and_master(audio, markup, out_dir, name=None, settings: Settings | None 
     res = cut(x, sr, room, pieces, marks, settings, log, render=not report_only)
     del x
     gc.collect()
+    kept = res.pop("kept")
+    if lines:
+        res["manuscript"] = dict(compare(lines, kept), script=script)
+        m = res["manuscript"]
+        log(f"  against the manuscript: {m['lines_found']}/{m['lines']} lines found, {len(m['pickups'])} pickup(s), "
+            f"{len(m['small'])} small difference(s), {len(m['not_found'])} line(s) not found")
     s = res["summary"]
     log(f"  {s['cuts']} cut(s): {s['words_cut']} of {s['words_heard']} words and {s['sounds_cut']} sound(s) out, "
         f"{s['pauses_changed']} pause(s) changed")
@@ -92,6 +103,14 @@ def cut_and_master(audio, markup, out_dir, name=None, settings: Settings | None 
     log(f"Done in {(time.time() - t0) / 60:.1f} min: {s['raw_minutes']:.1f} min recorded -> {s['edited_minutes']:.1f} min. "
         f"Report: {out / (name + '.report.md')}")
     return data
+
+
+def recordings(base, audio) -> list[str]:
+    """Every file a project entry names, in natural order."""
+    hits = []
+    for pat in audio if isinstance(audio, list) else [audio]:
+        hits += [f for f in sorted(glob.glob(str(Path(base) / pat)), key=natural) if f not in hits]
+    return hits
 
 
 def natural(s: str):

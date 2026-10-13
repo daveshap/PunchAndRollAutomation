@@ -3,6 +3,8 @@
   punchroll transcript RAW...          write each recording's transcript, ready to be marked up
   punchroll cut RAW --markup FILE      cut the recording as its marked-up transcript says, and master it
   punchroll batch project.toml         do both for every recording in a project file
+  punchroll verify EDITED --script S   proof a finished file against its manuscript and ACX; writes no audio
+  punchroll batch project.toml --proof   the same for every finished file in a project
   punchroll standards EDITED...        check finished files against ACX and ElevenLabs
   punchroll scorecard project.toml     score every finished recording side by side
   punchroll picture FILE --at 3:08     a spectrogram of a passage, as a PNG
@@ -18,6 +20,14 @@ from pathlib import Path
 
 from . import __version__
 from .config import load_settings
+
+
+def _script_args(p, required=False):
+    p.add_argument("--script", required=required, help="the manuscript (.md, .txt, or .docx)"
+                   + ("" if required else "; the report then also sets what was kept beside it"))
+    p.add_argument("--from", dest="start", help="start at the first heading containing this text")
+    p.add_argument("--to", dest="end", help="stop before the next heading containing this text")
+    p.add_argument("--lines", dest="line_range", help="use only these lines of a .md/.txt manuscript, e.g. 115-143")
 
 
 def main(argv=None) -> int:
@@ -40,11 +50,22 @@ def main(argv=None) -> int:
     p.add_argument("--config", help="TOML file overriding the default settings")
     p.add_argument("--no-mp3", action="store_true", help="write only the WAV master")
     p.add_argument("--report-only", action="store_true", help="list what the mark-up does, but render nothing")
+    _script_args(p)
+
+    p = sub.add_parser("verify", help="proof a finished file against its manuscript and ACX; writes no audio")
+    p.add_argument("audio", nargs="+", help="finished files (MP3 or WAV), whoever made them")
+    _script_args(p, required=True)
+    p.add_argument("-o", "--out", default="edited", help="folder for the reports (default: ./edited)")
+    p.add_argument("--config", help="TOML file overriding the default settings")
 
     p = sub.add_parser("batch", help="transcribe, then cut and master, every recording in a project TOML")
     p.add_argument("project")
     p.add_argument("--only", help="run only recordings whose name contains this text")
     p.add_argument("--force", action="store_true", help="redo recordings that are already up to date")
+    p.add_argument("--proof", action="store_true",
+                   help="for finished audio: don't cut anything, proof each file against its manuscript as verify does")
+    p.add_argument("--report-only", action="store_true",
+                   help="write the reports and render no audio (with --proof, which never renders, it changes nothing)")
 
     p = sub.add_parser("standards", help="check finished files against ACX and ElevenLabs voice-clone guidance")
     p.add_argument("audio", nargs="+", help="finished files (MP3 or WAV); wildcards are expanded")
@@ -102,8 +123,21 @@ def _run(a) -> int:
         for path in (a.audio, a.markup):
             if not Path(path).is_file():
                 raise FileNotFoundError(f"not found: {path}")
+        lines, desc = _manuscript(a.script, a.start, a.end, a.line_range)
         cut_and_master(a.audio, a.markup, a.out, a.name, load_settings(a.config), mp3=not a.no_mp3,
-                       report_only=a.report_only)
+                       report_only=a.report_only, lines=lines, script=desc)
+        return 0
+
+    if a.cmd == "verify":
+        missing = [f for f in a.audio if not Path(f).is_file()]
+        if missing:
+            raise FileNotFoundError(f"not found: {', '.join(missing)}")
+        lines, desc = _manuscript(a.script, a.start, a.end, a.line_range)
+        out = Path(a.out)
+        out.mkdir(parents=True, exist_ok=True)
+        rec = _recognizer(load_settings(a.config))
+        for f in a.audio:
+            print(_proof(f, lines, desc, out, rec))
         return 0
 
     if a.cmd == "batch":
@@ -153,6 +187,41 @@ def _run(a) -> int:
     return 1
 
 
+def _manuscript(script, start=None, end=None, line_range=None):
+    """The manuscript's lines for one recording and a line saying which part, or (None, "") if there is no script."""
+    if not script:
+        return None, ""
+    from .text import load_script
+    desc = (Path(script).name + (f" from '{start}'" if start else "") + (f" to '{end}'" if end else "")
+            + (f" lines {line_range}" if line_range else ""))
+    return load_script(script, start, end, line_range), desc
+
+
+def _recognizer(settings):
+    """Loads the speech model once, and only if a file needs transcribing."""
+    from .asr import Recognizer
+    from .config import auto_threads
+    holder = {}
+
+    def rec():
+        if "r" not in holder:
+            holder["r"] = Recognizer(auto_threads(settings.threads))
+        return holder["r"]
+    return rec
+
+
+def _proof(audio, lines, desc, out: Path, rec) -> str:
+    """Proof one finished file, write its two reports, and return the Markdown."""
+    from .models import transcripts_dir
+    from .verify import verify, verify_markdown
+    v = verify(audio, lines, rec, transcripts_dir())
+    md = verify_markdown(v, desc)
+    stem = Path(audio).stem
+    (out / f"{stem}.verify.json").write_text(json.dumps(v, indent=1), encoding="utf-8")
+    (out / f"{stem}.verify.md").write_text(md, encoding="utf-8")
+    return md
+
+
 def _toml(path) -> dict:
     if sys.version_info >= (3, 11):
         import tomllib
@@ -168,21 +237,52 @@ def _seconds(text: str) -> float:
 
 
 def _batch(a) -> int:
-    from .pipeline import cut_and_master, finished, recording, transcript
+    from .pipeline import cut_and_master, finished, recording, recordings, transcript
     proj_path = Path(a.project)
     proj, base = _toml(proj_path), proj_path.parent
     config = base / proj["config"] if proj.get("config") else None
     settings = load_settings(config)
     out, marks_dir, mp3 = base / proj.get("out", "edited"), base / proj.get("markup", "markup"), proj.get("mp3", True)
-    done, waiting = [], []
+    done, waiting, proofed = [], [], []
+    rec = _recognizer(settings)
+
+    def manuscript(ch, always=False):
+        """A recording is set beside the manuscript when its entry names its part of it (`from`, `to`, `lines`) or a
+        script of its own. A script named only at the top of the file is the default file, not a request to compare."""
+        script = ch.get("script") or proj.get("script")
+        if not script or not (always or ch.get("script") or ch.get("from") or ch.get("to") or ch.get("lines")):
+            return None, ""
+        return _manuscript(base / script, ch.get("from"), ch.get("to"), ch.get("lines"))
+
     for n, ch in enumerate(proj.get("chapter", []), 1):
         name = ch.get("name") or f"chapter-{n:02d}"
         if a.only and a.only not in name:
             continue
         if not ch.get("audio"):
             raise ValueError(f"[{name}] needs audio = \"...\"")
+        if a.proof:                                # finished audio: recognize, compare, report; write no audio
+            lines, desc = manuscript(ch, always=True)
+            files = recordings(base, ch["audio"])
+            if lines is None or not files:
+                raise ValueError(f"[{name}] --proof needs a script (in the entry or at the top) and audio that exists")
+            print(f"\n=== {name} ===")
+            out.mkdir(parents=True, exist_ok=True)
+            for f in files:
+                _proof(f, lines, desc, out, rec)
+                v = json.loads((out / f"{Path(f).stem}.verify.json").read_text(encoding="utf-8"))
+                proofed.append((Path(f).name, v))
+            continue
         audio = recording(base, name, ch["audio"])
         markup = base / ch["markup"] if ch.get("markup") else marks_dir / f"{name}.md"
+        lines, desc = manuscript(ch)
+        if a.report_only:                          # what each mark-up does, and how it stands against the manuscript: no audio
+            if markup.is_file():
+                print(f"\n=== {name} ===")
+                done.append((name, cut_and_master(audio, markup, out, name, settings, mp3=mp3, report_only=True,
+                                                  lines=lines, script=desc)["summary"]))
+            else:
+                print(f"=== {name} === no mark-up, so nothing to report")
+            continue
         if not markup.is_file():
             if finished(out, name, [audio], mp3) and not a.force:
                 print(f"=== {name} === finished earlier; no mark-up on file, left as it is")
@@ -193,11 +293,22 @@ def _batch(a) -> int:
                 transcript(audio, fresh, settings)
             waiting.append((name, fresh, markup))
             continue
-        if not a.force and finished(out, name, [audio, markup] + ([config] if config else []), mp3):
+        made_from = [audio, markup] + ([config] if config else [])
+        if lines:                                  # the report sets the cut beside the manuscript, so it follows the manuscript too
+            made_from.append(base / (ch.get("script") or proj["script"]))
+        if not a.force and finished(out, name, made_from, mp3):
             print(f"=== {name} === up to date, skipped (--force redoes it)")
             continue
         print(f"\n=== {name} ===")
-        done.append((name, cut_and_master(audio, markup, out, name, settings, mp3=mp3)["summary"]))
+        done.append((name, cut_and_master(audio, markup, out, name, settings, mp3=mp3, lines=lines, script=desc)["summary"]))
+    if a.proof:
+        print("\nFile                             length  pickups  small  not found    RMS  true peak  noise floor")
+        for fname, v in proofed:
+            m = v["acx"]
+            print(f"{fname[:30]:30s}  {v['duration']:>7s}  {len(v['pickups']):7d}  {len(v['small']):5d}  {len(v['not_found']):9d}  "
+                  f"{m['rms_db']:5.1f}  {m['true_peak_db']:9.2f}  {m['noise_floor_db']:11.1f}")
+        print(f"Reports: {out}")
+        return 0
     if done:
         print("\nRecording                       recorded  edited  cuts")
         for name, s in done:

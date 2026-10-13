@@ -17,3 +17,17 @@ audio = "piece 01 - *.wav"  # one recording; a wildcard is fine if it matches on
 name = "piece 02"
 audio = "piece 02 - take 1.wav"
 # markup = "elsewhere/piece 02.md"   # if the marked-up transcript is kept somewhere else
+
+# Work that has to follow a manuscript: name the manuscript and this recording's part of it, and the cut's
+# report also lists every difference between what was kept and the manuscript. `batch --report-only` writes
+# the reports without rendering audio.
+[[chapter]]
+name = "ch01"
+audio = "raw/ch01.wav"
+script = "book.md"                  # or set `script` once at the top of the file
+from = "Chapter 1"                  # text from the heading this recording starts at
+to = "Chapter 2"                    # and from the heading the next one starts at
+# lines = "301-604"                 # or pick the part by line numbers in a Markdown manuscript
+
+# To proof finished audio instead (no mark-up, nothing cut), point `audio` at the finished files and run
+#     punchroll batch project.toml --proof

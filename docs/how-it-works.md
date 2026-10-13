@@ -94,3 +94,13 @@ RMS, true peak (of the WAV and of the MP3), and noise floor are reported against
 - `name.edit.json`: the same, plus the edit list (which stretch of the recording sits where in the finished file). The scorecard reads it.
 
 To read a finished file back, run `punchroll transcript` on it: the result is the same kind of transcript, and anything still wrong in it shows the way it did in the recording.
+
+## 7. Against a manuscript
+
+Optional, and a report only. `proof.py` reduces the manuscript and the audio's words to the same tokens (lowercase, accents removed, numbers spelled the way they are read, compounds reconciled in both directions) and runs a plain word-for-word comparison. Each word in the audio is then counted for the manuscript line it stands in, and each line is compared with the words read for it:
+
+- A difference of an article, a plural, or a near-spelling is "small"; anything else is a pickup. Both are listed the same way: line number, the time of the word, what differs, the manuscript's sentence.
+- A line with no words read for it is "not found", with the time where it was expected.
+- Six or more words in a row between two lines, with nothing in the manuscript for them, are listed on their own.
+
+`verify` runs it on a finished file's transcript. `cut --script` runs it on the words the mark-up kept, which have two times each: where they are in the recording and where they land in the edit.
