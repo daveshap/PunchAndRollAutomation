@@ -133,6 +133,6 @@ def standards_markdown(res: dict) -> str:
            "- Mouth clicks are counted, not judged. ACX asks for files free of \"excessive mouth noise\" and gives no figure; "
            "ElevenLabs says the clone copies everything in the audio.",
            "- Breaths. Neither publisher gives a rule. Audiobook practice is to leave them in and lower only the loud ones.",
-           "- Wording, retakes left in, and stray sounds: `punchroll verify` checks those against the script.",
+           "- Wording, retakes left in, and stray sounds: `punchroll transcript` on the finished file writes it out to be read.",
            "- Whether it sounds good. These are measurements."]
     return "\n".join(md) + "\n"

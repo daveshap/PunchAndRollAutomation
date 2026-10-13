@@ -3,7 +3,6 @@ import numpy as np
 import soundfile as sf
 
 from punchroll.cli import _seconds, main
-from punchroll.edit import not_said_again
 from punchroll.scorecard import kept_pauses, rank_rows, scorecard_markdown
 from punchroll.standards import acx_problems, check_files, measure_file, pvc_problems, standards_markdown
 
@@ -58,18 +57,9 @@ def test_seconds_from_a_clock_time():
     assert _seconds("3:08.5") == 188.5 and _seconds("42") == 42.0 and _seconds("1:02:03") == 3723.0
 
 
-def test_not_said_again_separates_a_retake_from_a_lost_ad_lib():
-    retake = "Some of the most skilled people in history loft their".split()
-    after = "Some of the most skilled people in history lost their livelihoods to machines.".split()
-    assert not_said_again(retake, after) == ["loft", "their"]                 # the slip, and the word cut off behind it
-    aside = "useless or even dangerous. um [sound]".split()
-    assert not_said_again(aside[1:], "Hallucination. When a model produces".split()) == ["or", "even", "dangerous."]
-    assert not_said_again(["um", "[sound]", "sorry"], ["Second,"]) == []       # fillers and stray sounds are not words
-
-
 def test_rank_rows_orders_by_the_average_rank():
-    def row(name, clicks, retakes, tone_bands, pesq=None):
-        return {"name": name, "minutes": 5.0, "clicks": clicks, "room": 60.0, "retakes": retakes, "cuts": 1.0,
+    def row(name, clicks, cut, tone_bands, pesq=None):
+        return {"name": name, "minutes": 5.0, "clicks": clicks, "room": 60.0, "cut": cut, "cuts": 1.0,
                 "tone_bands": np.array(tone_bands, dtype=float), "pitch": 120.0, "pace": 140.0, "breaths": 3, "breaths_whole": 3,
                 "pesq": pesq, "pesq_low": pesq, "lowest": []}
     rows = [row("clean", 1.0, 2.0, [0, 0, 0]), row("clicky", 9.0, 5.0, [0, 0, 0.3]), row("odd one out", 4.0, 9.0, [6, -6, 6])]

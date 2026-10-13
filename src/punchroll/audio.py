@@ -4,7 +4,6 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
-from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 
@@ -64,52 +63,6 @@ def frame_db(x: np.ndarray, sr: int, hop_s: float = 0.005) -> tuple[np.ndarray, 
         out[a:b] = 10 * np.log10(fr.mean(axis=1) + 1e-20)
     out = np.maximum(out, np.concatenate([out[1:], out[-1:]])) if n else out
     return out, hop
-
-
-def speech_level_db(x: np.ndarray, sr: int) -> float:
-    """A robust 'how loud is the voice' number: the 90th percentile of 50 ms frame levels."""
-    db, _ = frame_db(x, sr, 0.05)
-    db = db[db > -80]
-    return float(np.percentile(db, 90)) if len(db) else -30.0
-
-
-@dataclass
-class Take:
-    path: str
-    start: float      # where this file begins on the combined timeline, in seconds
-    duration: float
-    gain_db: float
-
-
-def load_takes(paths: list[str], level_match: bool = True, gap_s: float = 1.0, log=print):
-    """Load one or more recordings in the order they were made and join them.
-
-    Later files (pickups, the next session) are matched in level to the first file,
-    so a line re-recorded on another day doesn't jump out.
-    """
-    xs, takes, sr0, ref_db, t = [], [], None, None, 0.0
-    for p in paths:
-        x, sr = read_mono(p)
-        if sr0 is None:
-            sr0 = sr
-        elif sr != sr0:
-            x = resample(x, sr, sr0)
-        gain = 0.0
-        lvl = speech_level_db(x, sr0)
-        if ref_db is None:
-            ref_db = lvl
-        elif level_match:
-            gain = float(np.clip(ref_db - lvl, -12, 12))
-            if abs(gain) > 0.3:
-                x = (x * 10 ** (gain / 20)).astype(np.float32)
-                log(f"  {Path(p).name}: level matched by {gain:+.1f} dB")
-        if xs:
-            xs.append(np.zeros(int(gap_s * sr0), dtype=np.float32))
-            t += gap_s
-        takes.append(Take(str(p), t, len(x) / sr0, gain))
-        xs.append(x)
-        t += len(x) / sr0
-    return (xs[0] if len(xs) == 1 else np.concatenate(xs)), sr0, takes
 
 
 def wav_subtype(paths, bits: int = 0) -> str:

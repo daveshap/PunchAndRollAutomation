@@ -1,90 +1,56 @@
 """Command line: punchroll <command> ...
 
-  punchroll models                     download the speech models once (about 480 MB)
-  punchroll lines   --script ...       show the lines a section will be matched against
-  punchroll clean   RAW... --script ...  edit and master a chapter
-  punchroll verify  EDITED --script ...  re-transcribe a finished file and check it
-  punchroll batch   project.toml         run clean for every chapter in a project file
-  punchroll transcribe RAW...          just the word timings, as JSON
-  punchroll standards EDITED...        check finished files against ACX and ElevenLabs (no transcription)
-  punchroll scorecard project.toml     score every finished chapter side by side
+  punchroll transcript RAW...          write each recording's transcript, ready to be marked up
+  punchroll cut RAW --markup FILE      cut the recording as its marked-up transcript says, and master it
+  punchroll batch project.toml         do both for every recording in a project file
+  punchroll standards EDITED...        check finished files against ACX and ElevenLabs
+  punchroll scorecard project.toml     score every finished recording side by side
   punchroll picture FILE --at 3:08     a spectrogram of a passage, as a PNG
+  punchroll models                     download the speech models once (about 480 MB)
 """
 from __future__ import annotations
 
 import argparse
 import glob
 import json
-import re
 import sys
 from pathlib import Path
 
 from . import __version__
-from .asr import Recognizer, transcribe
-from .config import auto_threads, load_settings
-from .models import transcripts_dir
-
-PAUSED = 3
-
-
-def _script_args(p):
-    p.add_argument("--script", required=True, help="the narration script (.md, .txt, or .docx)")
-    p.add_argument("--from", dest="start", help="start at the first heading containing this text")
-    p.add_argument("--to", dest="end", help="stop before the next heading containing this text")
-    p.add_argument("--lines", dest="line_range", help="use only these lines of a .md/.txt script, e.g. 115-143")
-
-
-def _common(p):
-    p.add_argument("--config", help="TOML file overriding the default settings")
-    p.add_argument("--threads", type=int, default=0, help="speech recognition threads (default: automatic)")
+from .config import load_settings
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="punchroll", description="Automatic punch-and-roll editing for audiobook narration.")
+    ap = argparse.ArgumentParser(prog="punchroll", description="Cut and master narration from a marked-up transcript.")
     ap.add_argument("--version", action="version", version=f"punchroll {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("models", help="download the speech models (once)")
 
-    p = sub.add_parser("lines", help="print the script lines a section will be matched against")
-    _script_args(p)
+    p = sub.add_parser("transcript", help="write a recording's transcript, ready to be marked up")
+    p.add_argument("audio", nargs="+", help="recordings, or finished files to read back")
+    p.add_argument("-o", "--out", default="markup", help="folder for the transcripts (default: ./markup)")
+    p.add_argument("--config", help="TOML file overriding the default settings")
 
-    p = sub.add_parser("clean", help="edit and master one chapter")
-    p.add_argument("audio", nargs="+", help="recordings in the order you made them (pickups last)")
-    _script_args(p)
-    _common(p)
-    p.add_argument("-o", "--out", default="edited", help="output folder (default: ./edited)")
-    p.add_argument("--name", help="base name for the output files")
-    p.add_argument("--no-mp3", action="store_true", help="write only the WAV master")
-    p.add_argument("--report-only", action="store_true", help="analyze and report, but don't render audio")
-    p.add_argument("--max-minutes", type=float, help="stop transcribing after this long; run again to resume")
-    p.add_argument("--no-level-match", action="store_true", help="don't match later takes' level to the first")
-    p.add_argument("--no-comps", action="store_true", help="always keep the last take whole (no two-take splices)")
-
-    p = sub.add_parser("verify", help="re-transcribe an edited file and check it against the script and ACX")
+    p = sub.add_parser("cut", help="cut a recording as its marked-up transcript says, and master it")
     p.add_argument("audio")
-    _script_args(p)
-    _common(p)
-    p.add_argument("-o", "--out", default="edited")
+    p.add_argument("--markup", required=True, help="the marked-up transcript")
+    p.add_argument("-o", "--out", default="edited", help="output folder (default: ./edited)")
+    p.add_argument("--name", help="base name for the output files (default: the recording's)")
+    p.add_argument("--config", help="TOML file overriding the default settings")
+    p.add_argument("--no-mp3", action="store_true", help="write only the WAV master")
+    p.add_argument("--report-only", action="store_true", help="list what the mark-up does, but render nothing")
 
-    p = sub.add_parser("batch", help="run clean for every [[chapter]] in a project TOML")
+    p = sub.add_parser("batch", help="transcribe, then cut and master, every recording in a project TOML")
     p.add_argument("project")
-    p.add_argument("--only", help="run only chapters whose name contains this text")
-    p.add_argument("--force", action="store_true", help="redo chapters that are already up to date")
-    p.add_argument("--max-minutes", type=float, help="stop transcribing after this long; run again to resume")
-    p.add_argument("--proof", action="store_true",
-                   help="for finished audio: don't edit, check each chapter against the script as verify does")
-
-    p = sub.add_parser("transcribe", help="word timings only")
-    p.add_argument("audio", nargs="+")
-    _common(p)
-    p.add_argument("-o", "--out", default="edited")
+    p.add_argument("--only", help="run only recordings whose name contains this text")
+    p.add_argument("--force", action="store_true", help="redo recordings that are already up to date")
 
     p = sub.add_parser("standards", help="check finished files against ACX and ElevenLabs voice-clone guidance")
     p.add_argument("audio", nargs="+", help="finished files (MP3 or WAV); wildcards are expanded")
     p.add_argument("-o", "--out", help="also write the report to this Markdown file")
 
-    p = sub.add_parser("scorecard", help="score every finished chapter of a project side by side")
+    p = sub.add_parser("scorecard", help="score every finished recording of a project side by side")
     p.add_argument("project")
     p.add_argument("-o", "--out", help="Markdown file to write (default: scorecard.md in the project's output folder)")
     p.add_argument("--listener", action="store_true",
@@ -110,19 +76,8 @@ def main(argv=None) -> int:
     except (ValueError, FileNotFoundError, RuntimeError) as e:
         print(f"punchroll: {e}", file=sys.stderr)
         return 2
-    except BrokenPipeError:               # e.g. punchroll lines ... | head
+    except BrokenPipeError:
         return 0
-
-
-def _settings(a):
-    s = load_settings(getattr(a, "config", None))
-    if getattr(a, "threads", 0):
-        s.threads = a.threads
-    if getattr(a, "no_level_match", False):
-        s.level_match = False
-    if getattr(a, "no_comps", False):
-        s.comps = False
-    return s
 
 
 def _run(a) -> int:
@@ -133,62 +88,31 @@ def _run(a) -> int:
         print(json.dumps({k: str(v) for k, v in paths.items()}, indent=1))
         return 0
 
-    if a.cmd == "lines":
-        from .text import load_script
-        for i, ln in enumerate(load_script(a.script, a.start, a.end, a.line_range), 1):
-            print(f"{i:4d}  {'#' if ln.kind == 'heading' else ' '}  {ln.text}")
-        return 0
-
-    if a.cmd == "clean":
-        from .pipeline import clean
+    if a.cmd == "transcript":
+        from .pipeline import transcript
         missing = [p for p in a.audio if not Path(p).is_file()]
         if missing:
             raise FileNotFoundError(f"not found: {', '.join(missing)}")
-        res = clean(a.audio, a.script, a.out, a.name, a.start, a.end, a.line_range, _settings(a),
-                    mp3=not a.no_mp3, report_only=a.report_only,
-                    max_seconds=a.max_minutes * 60 if a.max_minutes else None)
-        return PAUSED if res is None else 0
+        for path in a.audio:
+            transcript(path, Path(a.out) / f"{Path(path).stem}.transcript.md", load_settings(a.config))
+        return 0
 
-    if a.cmd == "verify":
-        from .text import load_script
-        from .verify import verify, verify_markdown
-        s = _settings(a)
-        lines = load_script(a.script, a.start, a.end, a.line_range)
-        out = Path(a.out)
-        out.mkdir(parents=True, exist_ok=True)
-        v = verify(a.audio, lines, lambda: Recognizer(auto_threads(s.threads)), transcripts_dir(), s)
-        stem = Path(a.audio).stem
-        (out / f"{stem}.verify.json").write_text(json.dumps(v, indent=1), encoding="utf-8")
-        (out / f"{stem}.verify.md").write_text(verify_markdown(v), encoding="utf-8")
-        print(verify_markdown(v))
+    if a.cmd == "cut":
+        from .pipeline import cut_and_master
+        for path in (a.audio, a.markup):
+            if not Path(path).is_file():
+                raise FileNotFoundError(f"not found: {path}")
+        cut_and_master(a.audio, a.markup, a.out, a.name, load_settings(a.config), mp3=not a.no_mp3,
+                       report_only=a.report_only)
         return 0
 
     if a.cmd == "batch":
         return _batch(a)
 
-    if a.cmd == "transcribe":
-        from .audio import read_mono
-        s = _settings(a)
-        holder = {}
-
-        def rec():                                 # load the model once, and only if needed
-            if "r" not in holder:
-                holder["r"] = Recognizer(auto_threads(s.threads))
-            return holder["r"]
-
-        out = Path(a.out)
-        out.mkdir(parents=True, exist_ok=True)
-        for path in a.audio:
-            x, sr = read_mono(path)
-            tr = transcribe(path, x, sr, rec, transcripts_dir())
-            dest = out / f"{Path(path).stem}.words.json"
-            dest.write_text(json.dumps(tr, indent=1), encoding="utf-8")
-            print(f"{path}: {len(tr['words'])} words -> {dest}")
-        return 0
-
     if a.cmd == "standards":
+        from .pipeline import natural
         from .standards import check_files, standards_markdown
-        files = [f for pat in a.audio for f in (sorted(glob.glob(pat), key=_natural) or [pat])]
+        files = [f for pat in a.audio for f in (sorted(glob.glob(pat), key=natural) or [pat])]
         missing = [f for f in files if not Path(f).is_file()]
         if missing:
             raise FileNotFoundError(f"not found: {', '.join(missing)}")
@@ -200,15 +124,11 @@ def _run(a) -> int:
 
     if a.cmd == "scorecard":
         from .scorecard import scorecard, scorecard_markdown
-        if sys.version_info >= (3, 11):
-            import tomllib
-        else:  # pragma: no cover
-            import tomli as tomllib
         rows = scorecard(a.project, listener=a.listener)
         if not rows:
-            raise ValueError("no chapter of this project has a finished WAV yet; run batch first")
+            raise ValueError("no recording of this project has a finished WAV and an edit list yet")
         md = scorecard_markdown(rows)
-        proj = tomllib.loads(Path(a.project).read_text(encoding="utf-8"))
+        proj = _toml(a.project)
         dest = Path(a.out) if a.out else Path(a.project).parent / proj.get("out", "edited") / "scorecard.md"
         dest.write_text(md, encoding="utf-8")
         print(md)
@@ -233,91 +153,57 @@ def _run(a) -> int:
     return 1
 
 
+def _toml(path) -> dict:
+    if sys.version_info >= (3, 11):
+        import tomllib
+    else:  # pragma: no cover
+        import tomli as tomllib
+    return tomllib.loads(Path(path).read_text(encoding="utf-8"))
+
+
 def _seconds(text: str) -> float:
     """'3:08.4' or '188.4' -> seconds."""
     parts = [float(p) for p in str(text).split(":")]
     return sum(p * 60 ** k for k, p in enumerate(reversed(parts)))
 
 
-def _natural(s: str):
-    """Sort key that puts ch01-2.wav before ch01-10.wav."""
-    return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", s)]
-
-
 def _batch(a) -> int:
-    import time
-
-    from .pipeline import clean, describe, finished_report
-    from .text import load_script
-    from .verify import verify, verify_markdown
-    if sys.version_info >= (3, 11):
-        import tomllib
-    else:  # pragma: no cover
-        import tomli as tomllib
+    from .pipeline import cut_and_master, finished, recording, transcript
     proj_path = Path(a.project)
-    proj = tomllib.loads(proj_path.read_text(encoding="utf-8"))
-    base = proj_path.parent
+    proj, base = _toml(proj_path), proj_path.parent
     config = base / proj["config"] if proj.get("config") else None
     settings = load_settings(config)
-    out = base / proj.get("out", "edited")
-    mp3 = proj.get("mp3", True)
-    t0, summary, proofed, holder = time.time(), [], [], {}
-
-    def rec():                                     # load the model once, and only if needed
-        if "r" not in holder:
-            holder["r"] = Recognizer(auto_threads(settings.threads))
-        return holder["r"]
-
+    out, marks_dir, mp3 = base / proj.get("out", "edited"), base / proj.get("markup", "markup"), proj.get("mp3", True)
+    done, waiting = [], []
     for n, ch in enumerate(proj.get("chapter", []), 1):
         name = ch.get("name") or f"chapter-{n:02d}"
         if a.only and a.only not in name:
             continue
-        if not ch.get("audio") or not (ch.get("script") or proj.get("script")):
-            raise ValueError(f"[{name}] needs audio = [...] and a script (set in the chapter or at the top)")
-        files = []
-        for pat in ch["audio"] if isinstance(ch["audio"], list) else [ch["audio"]]:
-            hits = sorted(glob.glob(str(base / pat)), key=_natural)
-            if not hits:
-                raise FileNotFoundError(f"[{name}] no files match {pat}")
-            files = [f for f in files if f not in hits] + hits   # a file named again later moves there
-        script = base / (ch.get("script") or proj["script"])
-        section = (ch.get("from"), ch.get("to"), ch.get("lines"))
-        if a.proof:                                # finished audio: recognize, match, and report; write no audio
-            print(f"\n=== {name} ===")
-            out.mkdir(parents=True, exist_ok=True)
-            lines = load_script(script, *section)
-            for f in files:
-                v = verify(f, lines, rec, transcripts_dir(), settings)
-                (out / f"{Path(f).stem}.verify.json").write_text(json.dumps(v, indent=1), encoding="utf-8")
-                (out / f"{Path(f).stem}.verify.md").write_text(verify_markdown(v), encoding="utf-8")
-                proofed.append((Path(f).name, v))
+        if not ch.get("audio"):
+            raise ValueError(f"[{name}] needs audio = \"...\"")
+        audio = recording(base, name, ch["audio"])
+        markup = base / ch["markup"] if ch.get("markup") else marks_dir / f"{name}.md"
+        if not markup.is_file():
+            if finished(out, name, [audio], mp3) and not a.force:
+                print(f"=== {name} === finished earlier; no mark-up on file, left as it is")
+                continue
+            fresh = marks_dir / f"{name}.transcript.md"
+            if not fresh.is_file() or fresh.stat().st_mtime < Path(audio).stat().st_mtime:
+                print(f"\n=== {name} === writing the transcript")
+                transcript(audio, fresh, settings)
+            waiting.append((name, fresh, markup))
             continue
-        done = None if a.force else finished_report(out, name, files, script, describe(script, *section), mp3,
-                                                    [config] if config else [])
-        if done:
-            print(f"\n=== {name} === up to date, skipped (--force redoes it)")
-            summary.append((name, done["summary"], len(done["pickups"])))
+        if not a.force and finished(out, name, [audio, markup] + ([config] if config else []), mp3):
+            print(f"=== {name} === up to date, skipped (--force redoes it)")
             continue
         print(f"\n=== {name} ===")
-        left = None if not a.max_minutes else a.max_minutes * 60 - (time.time() - t0)
-        if left is not None and left <= 0:
-            print("Time budget used; run the same command again to continue.")
-            return PAUSED
-        res = clean(files, script, out, name, *section, settings, mp3=mp3, max_seconds=left)
-        if res is None:
-            return PAUSED
-        summary.append((name, res["summary"], len(res["pickups"])))
-    if a.proof:
-        print("\nFile                             length  to check  restarts    RMS  true peak  noise floor")
-        for fname, v in proofed:
-            m = v["acx"]
-            print(f"{fname[:30]:30s}  {v['duration']:>7s}  {len(v['problems']):8d}  {v['restarts_left']:8d}  "
-                  f"{m['rms_db']:5.1f}  {m['true_peak_db']:9.2f}  {m['noise_floor_db']:11.1f}")
-        print(f"Reports: {out}")
-        return 0
-    print("\nChapter                         recorded  edited  pickups")
-    for name, s, n in summary:
-        print(f"{name[:30]:30s}  {s['raw_minutes']:7.1f}  {s['edited_minutes']:6.1f}  {n:7d}")
+        done.append((name, cut_and_master(audio, markup, out, name, settings, mp3=mp3)["summary"]))
+    if done:
+        print("\nRecording                       recorded  edited  cuts")
+        for name, s in done:
+            print(f"{name[:30]:30s}  {s['raw_minutes']:7.1f}  {s['edited_minutes']:6.1f}  {s['cuts']:4d}")
+    for name, fresh, markup in waiting:
+        print(f"\nWaiting for mark-up: {name}\n  read    {fresh}\n  save as {markup}")
     return 0
 
 
