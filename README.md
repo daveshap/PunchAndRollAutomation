@@ -172,7 +172,7 @@ Notes from real sessions: what was run, what it showed, and what changed in the 
 3. *The pauses tell an added word from the end of an abandoned take.* In the sixteen recordings the edit picks up after a cut 128 times. By the recognizer's word times, 121 of those come a second or more after the last cut word and 125 half a second or more. Of the three that come sooner, one is a stumble with no pause ("with c, the, with the coalitions") and two follow a stray sound. So an unscripted word that runs on from the cut take belongs to it, and one that follows a pause and runs into the retake opens the retake. A filler between two words is not a pause: "no, sorry, that's wrong" is all chatter.
 4. *This reader calls a take off with "no".* Ten times in the sixteen recordings ("No, sorry.", "No, that's wrong.", "No, hang on."). Once it ran straight into the next attempt ("...isn't immune. No, even our..."), which is where an added word would be.
 5. *A retake that rewords its first word is taken to start at its second.* "It's the bedrock arrangement of civilization" was read again as "It is the bedrock arrangement of civilization". The alignment explains "It is" as two unscripted words in front of a retake that starts at "the", which costs a little less than a misread, so the first take's "It's" stays as the last reading of that word. Keeping "It is" as an added word there would have put "It's It is" in the finished audio.
-6. *The case that started this passes by a hundredth of a second.* The pause between the last "Second," and "it" is 0.24 seconds, against a limit of 0.25.
+6. *The case that started this only just passes.* The pause between the last "Second," and "it" is 0.244 seconds, against a limit of 0.25.
 
 **What changed.**
 
