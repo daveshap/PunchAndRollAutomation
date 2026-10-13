@@ -11,7 +11,7 @@ What running it on real recordings has turned up, and what changed in the code b
 ## What it does
 
 1. **Transcribes** each recording with word timings, offline, using NVIDIA Parakeet TDT 0.6B v2 through sherpa-onnx. Sound at the voice's level that the voice detector skips (a clipped sentence start, a muttered aside) is transcribed too, so it can't sit unheard in a pause, and sound the recognizer has no word for (a cut-off syllable, a bump) is cut the way a filler is.
-2. **Aligns** the transcript to your narration script. Restarts, skipped text, fillers ("um", "sorry"), and asides are explicit moves in the alignment, so a repeated phrase, a retaken sentence, and a re-read paragraph are all recognized the same way. For every word of the script, the last reading wins. A word your retake leaves out stays out, so nothing from the abandoned take is set into the middle of it. A word or two you add at the edge of a line is kept when it runs straight on from the line.
+2. **Aligns** the transcript to your narration script. Restarts, skipped text, fillers ("um", "sorry"), and asides are explicit moves in the alignment, so a repeated phrase, a retaken sentence, and a re-read paragraph are all recognized the same way. For every word of the script, the last reading wins. A word your retake leaves out stays out, so nothing from the abandoned take is set into the middle of it. A word or two you add at the start or end of a line is kept when it runs straight on from the line, whether the take on its other side was kept or abandoned: read "Second, it keeps spawning, no, sorry. Second, it keeps improving." and the last "Second," stays.
 3. **Comps** where it helps: if the last take of a line has a slip that an earlier take read correctly, the two are spliced at a natural pause. If you reword lines on purpose as you read, `--no-comps` keeps your last take of every line whole.
 4. **Rebuilds the pauses.** Your own pauses and breaths are kept wherever nothing was cut and the pause is in range. Where a take was cut, or a pause is too long or too short, the gap is rebuilt from your room's own tone. Every join gets a short crossfade.
 5. **Masters to ACX**: −20 dB RMS, true peak at −3.5 dB or lower (ACX's limit is −3), noise floor below −60 dB (with noise reduction if the room needs it, or whenever you ask for it), 1.5 s of room tone at the head and 3 s at the tail. Writes a WAV at your recording's bit depth and a 44.1 kHz mono 192 kbps constant-bit-rate MP3, and measures the MP3's own peak after encoding it.
@@ -137,7 +137,7 @@ For mastering, `limiter_ceiling_db` is the true-peak ceiling (−3.5 dB, half a 
 
 Noise reduction is automatic unless you say otherwise: it runs only when the noise floor would end above −62 dB, and turns the room's noise down by 12 dB. `noise_reduction = "on"` runs it on every chapter and `"off"` on none. `noise_reduction_db`, `noise_sensitivity`, and `noise_smoothing` are the three numbers Audacity's Noise Reduction effect asks for and mean the same here, so settings you already trust carry over. There is no noise sample to select: it is taken from the pauses. A hum at the pitch of your voice still passes while you are speaking, where your voice covers it, and is down by the full amount in every pause. More in [docs/how-it-works.md](docs/how-it-works.md#5-master).
 
-Two settings decide how much of your own wording survives when you depart from the script. `comps = false` (or `--no-comps` on the command line) keeps the last take of every line whole instead of splicing in part of an earlier one. That includes its end: if your retake drops the last few words of a sentence and reads on, they stay dropped. `adlib` under `[pauses]` is how closely an unscripted word must follow or lead into a line to count as part of it (0.25 seconds by default).
+Two settings decide how much of your own wording survives when you depart from the script. `comps = false` (or `--no-comps` on the command line) keeps the last take of every line whole instead of splicing in part of an earlier one. That includes its end: if your retake drops the last few words of a sentence and reads on, they stay dropped. `adlib` under `[pauses]` is how closely an unscripted word must follow or lead into a line to count as part of it (0.25 seconds by default). Beside a take you abandoned, it is also the least pause that sets such a word apart from that take.
 
 ## Running it with an AI agent (optional)
 
@@ -151,6 +151,8 @@ Nothing in the pipeline calls an AI service. If you'd like Claude to run it for 
 - The recognizer sometimes mishears names, numbers, and short words, so pickups are places to listen, not verdicts. It formats numbers by context: "$450" has come back as "$450,000" right after a larger figure was read.
 - A sound at the voice's level with no recognizable words in it (a cut-off syllable, a cough, a bump) is cut and listed in the report as a stray sound, provided it stands clear of the words around it. One that runs into a word, or sits more than 25 dB under the voice, is not caught. One that stands where the script has a word nothing else was heard for is kept as that word, and the report says so.
 - Cuts are placed in quiet where there is any. When you stumble and start again without a pause, the cut goes just ahead of the re-read's first word, in whatever sound is there, and the report doesn't mark that join.
+- Beside a take you abandon, a word you added is told from that take's last word, and from chatter, mainly by its pauses. One or two unscripted words that follow a pause and run straight into the retake are kept, so a stray word there is kept too and listed as a pickup ("Right, it keeps improving"), unless it is "no" or one of the line's own first words. An added word is cut when you say it in the same breath as the take you abandon, and when it stands in front of a retake that picks up partway through a line.
+- A retake that rewords its first word ("It's the bedrock..." read again as "It is the bedrock...") is taken to start at its second word. The first take's "It's" is kept in front of it and the retake's "It is" is cut.
 - English only (Parakeet v2 is an English model).
 - If the script repeats a sentence word for word, a retake of it can occasionally be matched to the wrong instance.
 - No music beds or sound effects; this is for narration.
@@ -158,6 +160,27 @@ Nothing in the pipeline calls an AI service. If you'd like Claude to run it for 
 ## Field log
 
 Notes from real sessions: what was run, what it showed, and what changed in the code because of it. Newest first.
+
+### 2026-10-13: a word added where a retake begins
+
+**The job.** The item left open on 11 October. A general-purpose technology, says the script, "has three features. It's pervasive, spreading across many sectors. It keeps improving over time." The reader said: "...three features. First, it's pervasive, spreading across many sectors. Second, it keeps spawning, no, sorry. Second, it keeps improving over time." The edit kept "First," and cut the last "Second,", so the finished audio counted "First, ... And third, ...".
+
+**What it showed.**
+
+1. *The rule for added words looked only between two kept lines.* "First," sat between two lines that were both kept. The last "Second," had a cut word before it, which classed it as part of a re-read whatever the pauses around it.
+2. *The same thing happens at the end of a sentence.* Another recording of that day has "And AI hasn't even entered its golden age yet." and "a national fund that pays every citizen dividends." Each added word ran straight on from its sentence. The next sentence was then started, abandoned, and read again, and the added word went out with the abandoned take.
+3. *The pauses tell an added word from the end of an abandoned take.* In the sixteen recordings the edit picks up after a cut 128 times. By the recognizer's word times, 121 of those come a second or more after the last cut word and 125 half a second or more. Of the three that come sooner, one is a stumble with no pause ("with c, the, with the coalitions") and two follow a stray sound. So an unscripted word that runs on from the cut take belongs to it, and one that follows a pause and runs into the retake opens the retake. A filler between two words is not a pause: "no, sorry, that's wrong" is all chatter.
+4. *This reader calls a take off with "no".* Ten times in the sixteen recordings ("No, sorry.", "No, that's wrong.", "No, hang on."). Once it ran straight into the next attempt ("...isn't immune. No, even our..."), which is where an added word would be.
+5. *A retake that rewords its first word is taken to start at its second.* "It's the bedrock arrangement of civilization" was read again as "It is the bedrock arrangement of civilization". The alignment explains "It is" as two unscripted words in front of a retake that starts at "the", which costs a little less than a misread, so the first take's "It's" stays as the last reading of that word. Keeping "It is" as an added word there would have put "It's It is" in the finished audio.
+6. *The case that started this only just passes.* The pause between the last "Second," and "it" is 0.244 seconds, against a limit of 0.25.
+
+**What changed.**
+
+- `edit.py`: the rule for ad-libs at the edge of a line also looks at unscripted words beside a take that was cut. One or two of them are kept when they run straight on from, or into, a kept word (the same 0.25 seconds and the same two-word limit), provided they stand clear of the cut take: walking from them toward it, a pause of 0.25 seconds or more comes before any cut word, fillers and stray sounds aside. They must begin or end their line, so a retake that picks up partway through a line is left as it was. "No" is never kept this way.
+- Nor is a word that says the line's own first or last words again. That is a false start ("The— The end comes."), and at the first and last lines of a script the alignment takes one for chatter instead of a restart. None of the sixteen recordings has one there. It turned up when random readings were run through the old and the new code side by side.
+- The sixteen recordings were rebuilt. As they were edited, twelve against the written script and four against the reader's own wording, 111 runs of unscripted words sit beside a cut take, 75 of them one or two words long, and no edit list changed. Set against the written script instead, the four loose recordings now keep "Second,", "yet." and "dividends.", and nothing else differs. With comps on the result is the same. 62 tests.
+
+**Still open.** The retake that rewords its first word (item 5) is edited as before: the earlier take's first word is kept and the retake's own opening is cut. A stray word that follows a pause and runs straight into a retake is kept as an added word, unless it is "no". A word added in the same breath as the take being abandoned is cut with it. And a reader who leaves a beat after "Second," loses it: `adlib` is the setting to raise.
 
 ### 2026-10-11: four recordings read loosely, two of them in the rain
 
@@ -347,7 +370,7 @@ pip install -e ".[test]"
 pytest
 ```
 
-The tests cover script parsing, the alignment rules (restarts, fillers, asides, pickups, words a retake leaves out), the check for speech the voice detector missed, a full edit-and-master pass on synthetic audio (including ad-libs at the edge of a line and the comps switch), the true-peak ceiling on a bright signal and in the MP3, the WAV's bit depth, and the command line, including which chapters `batch` skips and what `--proof` writes. The checks are tested on made-up signals with known answers: a click in a pause and one beside a word, a room that gets noisier for a minute, a voice of known pitch, a breath left whole, thinned, and removed, a file that fails ACX on three counts, and the scorecard's ordering. They don't need the speech models, matplotlib, or PyTorch.
+The tests cover script parsing, the alignment rules (restarts, fillers, asides, pickups, words a retake leaves out), the check for speech the voice detector missed, a full edit-and-master pass on synthetic audio (including ad-libs at the edge of a line, beside a kept take and beside a cut one, and the comps switch), the true-peak ceiling on a bright signal and in the MP3, the WAV's bit depth, and the command line, including which chapters `batch` skips and what `--proof` writes. The checks are tested on made-up signals with known answers: a click in a pause and one beside a word, a room that gets noisier for a minute, a voice of known pitch, a breath left whole, thinned, and removed, a file that fails ACX on three counts, and the scorecard's ordering. They don't need the speech models, matplotlib, or PyTorch.
 
 ## Credits
 

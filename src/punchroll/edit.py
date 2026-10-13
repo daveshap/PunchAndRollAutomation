@@ -24,6 +24,7 @@ from .text import Line, toks
 
 ARTICLES = {"a", "an", "the", "this", "that", "these", "those"}
 SMALL = ARTICLES | {"and"}
+CALLS_OFF = {"no", "nope"}                             # said to call a take off: beside a cut take these are not ad-libs
 
 
 def stray_sounds(x: np.ndarray, sr: int, words: list[dict]) -> list[dict]:
@@ -195,11 +196,45 @@ def build_edit(x: np.ndarray, sr: int, words: list[dict], lines: list[Line], set
     # ---- ad-libs at the edge of a line: "...until they were cheap enough.", "And groceries don't fall."
     # A word or two that runs straight on from the kept word beside it is part of the reading, and
     # cutting it would mean cutting where there is no pause. An aside or a stray sound stands apart.
+    #
+    # The word's other side may be a take that was cut: "Second, it keeps spawning, no, sorry. Second,
+    # it keeps improving." keeps the last "Second,", which opens the retake. Most unscripted words
+    # beside a cut take are not ad-libs, so more is asked there. The word must stand clear of that
+    # take, with a pause before any of it is reached: one that runs on from it as well is its last
+    # word ("...it keeps spawning- it keeps improving"). It must begin or end its line, and not be one
+    # of that line's own words said twice ("The- The end comes."). And it must not be "no", which
+    # beside a cut take is the reader calling the take off.
+    def chatter(g):                                    # never part of the reading: a filler, a stray sound, "no" by a cut take
+        return info[g]["kind"] == "ins" and (hyp[g] in FILLERS
+                                             or info[g]["why"] == "re-read later" and hyp[g] in CALLS_OFF)
+
+    def clear(g, step):                                # walking from token g away from an ad-lib, back (-1) or on (1):
+        while 0 <= g < len(hyp):                       # does a pause come before any cut word but chatter?
+            a = g if step < 0 else g - 1               # the pause being crossed follows token a
+            if any(pause_after(w) >= P.adlib for w in range(hyp_w[a], hyp_w[a + 1])):
+                return True
+            if not chatter(g):
+                return info[g]["kept"]
+            g += step
+        return True
+
+    kept_pos = {d["pos"] for d in info if d["kind"] != "ins" and d["kept"]}
+
+    def belongs(said, g, step):                        # may these spoken words close (1) or open (-1) the line of kept token g?
+        p = info[g]["pos"]
+        k = sent_of[p]
+        rest, own = ((range(p + 1, s_end[k]), script[max(s_start[k], p - 1):p + 1]) if step > 0 else
+                     (range(s_start[k], p), script[p:min(p + 2, s_end[k])]))
+        if any(q in kept_pos for q in rest):           # not where a take picks up partway through the line: words in
+            return False                               # front of a pickup could be anything
+        return not any(near(a, b) for a in said for b in own)      # and not the line's own words again: a false start
+
     leads = set()                                      # ad-libs that open the next line instead of closing this one
     i = 0
     while i < len(hyp):
         j = i
-        while j < len(hyp) and info[j]["why"] == "between lines":
+        while (j < len(hyp) and info[j]["kind"] == "ins" and info[j]["why"] in ("between lines", "re-read later")
+               and not chatter(j)):
             j += 1
         if j == i:
             i += 1
@@ -213,6 +248,11 @@ def build_edit(x: np.ndarray, sr: int, words: list[dict], lines: list[Line], set
         w0, w1 = groups[0][0], groups[-1][-1]
         after = i > 0 and info[i - 1]["kept"] and w0 == hyp_w[i - 1] + 1 and pause_after(w0 - 1) < P.adlib
         before = j < len(hyp) and info[j]["kept"] and hyp_w[j] == w1 + 1 and pause_after(w1) < P.adlib
+        if info[i]["why"] == "re-read later":          # beside a cut take, more is asked (see above)
+            alone = len(groups) == 1                   # nothing but these words between the kept word and the cut take
+            said = [[hyp[g] for g in range(i, j) if hyp_w[g] in ws] for ws in (groups[0], groups[-1])]
+            after = after and (not alone or clear(j, 1)) and belongs(said[0], i - 1, 1)
+            before = before and (not alone or clear(i - 1, -1)) and belongs(said[1], j, -1)
         joined = (groups[0] if after and len(groups[0]) <= 2 else [],
                   groups[-1] if before and len(groups[-1]) <= 2 else [])
         for g in range(i, j):

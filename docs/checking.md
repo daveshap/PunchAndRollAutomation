@@ -107,7 +107,7 @@ What to look for:
 Every edit report now has a section, "Cut and not said again". A retake says the abandoned words again, so they turn up in what the edit keeps straight after the cut. Words that don't are shown in capitals. Most are chatter, slips and cut-off words. Some are things the reader meant to keep:
 
 - three or more words added in a row, which are cut as an aside by design ("...can be useless OR EVEN DANGEROUS.");
-- a word added at the start of a retaken sentence ("SECOND, it keeps improving"), which is cut with the abandoned take before it;
+- a word added beside a take you abandoned, if you said it in the same breath as that take or in front of a retake that picks up partway through a line ("It's the bedrock..." read again as "IT IS the bedrock..."); set apart by a pause, at the start or end of a line, it is kept;
 - a sentence reworded on the retake, when the first take matched the script better.
 
 The check does not use the script, so it sees what the alignment can't. If your own wording is what counts, give punchroll a script that holds what you said (your last take of every line), and this section will hold nothing but chatter.

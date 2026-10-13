@@ -55,7 +55,8 @@ class PauseSettings:
     before_heading: tuple = (1.80, 3.00, 2.20)
     cut_sentence: tuple = (0.55, 0.90)      # pause rebuilt where a take was cut between sentences
     cut_within: tuple = (0.12, 0.45)        # pause rebuilt where a take was cut inside a sentence
-    adlib: float = 0.25                     # an unscripted word at a line's edge is kept if it runs on within this
+    adlib: float = 0.25                     # an unscripted word at a line's edge is kept if it runs on within this,
+                                            # and stands at least this clear of a take that was cut beside it
     tolerance_short: float = 0.08           # leave a pause alone if it is this close to the minimum
     tolerance_long: float = 0.15            # ... or this close to the maximum
 

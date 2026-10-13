@@ -7,6 +7,7 @@ When you slip, keep recording. Pause for a breath, then start the sentence again
 - A clean pause before the restart (half a second or more) gives the cleanest splice.
 - Restarting at the start of a clause works too, but the start of the sentence is safest.
 - No need to say "sorry" or "again". Fillers and asides are cut, but silence cuts cleaner.
+- If you do say something between takes, pause again before you restart. A word or two that runs straight into the restart is taken for wording you added, and kept.
 - If a whole paragraph went wrong, just read the paragraph again. The last complete reading of every line wins.
 
 ## Before each session
