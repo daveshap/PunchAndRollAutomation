@@ -78,6 +78,8 @@ def test_unmarked_transcript_keeps_the_recording_as_it_was():
     assert text.count("{") == 2                                                # the two real pauses; the short gaps aren't listed
     res = run(x, room, pieces, text)
     assert heard(res["audio"]) == NAMES[:7] and not res["cuts"] and len(res["edl"]) == 1
+    assert [w["text"] for w in res["kept"]] == NAMES[:7]                         # the words that stay, with both their times
+    assert all(abs((w["at"] - w["raw"]) - (res["kept"][0]["at"] - res["kept"][0]["raw"])) < 0.01 for w in res["kept"])
     span = pieces[-1].b - pieces[0].a
     assert abs(len(res["audio"]) / SR - (span + 1.5 + 3.0)) < 0.7             # the words, a little room each side, head and tail
 

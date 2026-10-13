@@ -168,8 +168,15 @@ def cut(x: np.ndarray, sr: int, room: Room, pieces: list[Piece], marks: Marks, s
     for j in joins:
         j["clean"] = clean_at(pieces[j.pop("after")].b)
     words = [p for p in pieces if p.kind == "word"]
+    kept, at = [], 0.0                                 # the words that stay, with their times in the recording and in the edit
+    for i in voiced:
+        p = pieces[i]
+        if p.kind == "word":
+            mid = clean_at((p.a + p.b) / 2)
+            at = at if mid is None else mid - p.length / 2
+            kept.append({"text": p.text, "at": at, "end": at + p.length, "raw": p.a, "raw_end": p.b})
     return {
-        "audio": y, "sr": sr, "cuts": cuts, "pauses": joins, "edl": edl,
+        "audio": y, "sr": sr, "cuts": cuts, "pauses": joins, "edl": edl, "kept": kept,
         "summary": {
             "raw_minutes": round(dur / 60, 2), "edited_minutes": round(total / sr / 60, 2),
             "words_heard": len(words), "words_cut": sum(1 for i, p in enumerate(pieces) if p.kind == "word" and not keep[i]),

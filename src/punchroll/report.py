@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .markup import clock
+from .proof import manuscript_markdown
 
 
 def _ok(flag: bool) -> str:
@@ -24,6 +25,8 @@ def write_reports(out_dir: Path, name: str, res: dict, audio: str, markup: str, 
     s = res["summary"]
     data = {"name": name, "audio": audio, "markup": markup, "summary": s, "master": metrics,
             "cuts": res["cuts"], "pauses": res["pauses"], "edl": res["edl"]}
+    if res.get("manuscript"):
+        data["manuscript"] = res["manuscript"]
     stem = name if metrics else f"{name}.dry-run"      # a dry run never overwrites a finished recording's files
     if metrics:
         (out_dir / f"{name}.edit.json").write_text(json.dumps(data, indent=1), encoding="utf-8")
@@ -47,6 +50,8 @@ def write_reports(out_dir: Path, name: str, res: dict, audio: str, markup: str, 
                "", f"Room tone at the head and tail is set in the settings.{quieter}", ""]
     else:
         md += ["Dry run: nothing was rendered or mastered.", ""]
+    if res.get("manuscript"):
+        md += [f"Manuscript: {res['manuscript']['script']}", ""] + manuscript_markdown(res["manuscript"]) + [""]
     md += ["## Cuts", "", "Everything the mark-up struck, in order, and the pause that now stands between the words either side.", "",
            "| Recorded at | Edited at | Seconds out | Pause left | What |", "|---|---|---|---|---|"]
     md += [f"| {_at(c['raw'])} | {_at(c['clean'])} | {c['seconds']:.2f} | "

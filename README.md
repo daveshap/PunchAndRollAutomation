@@ -56,6 +56,33 @@ For each recording it writes the transcript if there is no mark-up yet, cuts and
 
 How each step works is in [docs/how-it-works.md](docs/how-it-works.md).
 
+## Against a manuscript
+
+When the audio has to follow a script word for word, punchroll sets the two side by side and lists every difference. This is a report. It never decides a cut.
+
+```bash
+py -3.13 -m punchroll verify "edited/ch01.mp3" --script book.md --from "Chapter 1" --to "Chapter 2"
+py -3.13 -m punchroll batch book.toml --proof
+py -3.13 -m punchroll cut "ch01.wav" --markup "markup/ch01.md" --script book.md --from "Chapter 1" --to "Chapter 2"
+```
+
+- **`verify`** proofs a finished file, whoever made it: it transcribes the file, compares it with the manuscript section, and measures it against ACX. It writes `name.verify.md` and `.json`, and no audio.
+- **`batch --proof`** does that for every finished file a project lists. `--report-only` is accepted with it.
+- **`cut --script`** adds the same comparison to the cut's own report, for the words the mark-up kept, with each time given twice: in the edited file and in the recording. In a project file, an entry that names its part of the manuscript (`from`, `to`, `lines`, or a `script` of its own) gets this automatically, and `batch --report-only` writes the reports without rendering audio.
+
+The report is the same in all three:
+
+| Section | What it lists |
+|---|---|
+| Pickups | Each line where what was read differs from the manuscript: the line number, the time of the word itself, what differs, and the manuscript's full sentence. |
+| Small differences | Differences of an article, a plural, or a spelling the recognizer varies on. Listed in full in the same form, with nothing left out, because some of them are real misreads. |
+| Not found | Manuscript lines with nothing read for them, each with the time where it was expected. |
+| In the audio and not in the manuscript | Six or more words in a row that the manuscript has nothing for: a retake left in, an aside, an added sentence. |
+
+The manuscript can be Markdown, plain text, or a Word file. Numbers are compared the way they are spoken ("1810s" and "eighteen tens", "$52,000" and "fifty-two thousand dollars", "World War II" and "World War two").
+
+For David's own recordings none of this is used: his spoken words are the standard.
+
 ## What Claude goes by
 
 David's instructions for the reading:
@@ -101,6 +128,23 @@ Notes from real sessions: what was run, what it showed, and what changed in the 
 
 Every entry below the first describes the rule-based editor (`clean`, `verify`, the alignment, comps, pause ranges) that the first entry removed. They are kept as the record of what that approach got right and wrong. The transcription, the mastering, and the measuring commands they describe are still in use.
 
+### 2026-10-13, third entry: the manuscript reports, put back and finished
+
+**What happened.** The entry below removed the rule-based editor. It also removed, by mistake, everything that compared audio with a manuscript: `verify`, `batch --proof`, and the Pickups and Small differences reports. David had asked for the rules that decide cuts to go. He had not asked for the reports to go, and he had approved the engineer's four requests about them the same morning. They were neither kept nor built.
+
+**What changed.**
+
+- The comparison is back as a report only (`proof.py`): it sets the words in the audio beside the manuscript's lines and lists what differs. It decides nothing about a cut.
+- *Small differences are listed in full.* Each has its line number, the time of the word, what differs, and the manuscript's sentence, exactly like a pickup. The list is no longer one run-on line, and no longer stops at forty.
+- *Times are the word's own,* not the start of its line. A line with several differences gives each its time.
+- *"Not found" lines say where they were expected:* the end of the last line read before them.
+- *The proof report and the cut report are the same report.* Both show the manuscript's line. `verify` and `batch --proof` proof finished files; `cut --script` adds the sections to a cut's report with both clocks, edited and recorded. `batch` accepts `--report-only`.
+- Roman numerals in a manuscript ("World War II") are compared as the numbers they are read as.
+
+**Run on real files.** Recordings 12 and 13, the first two finished from a marked-up transcript, were proofed against the script pieces they were read from. Recording 13: 78 of 80 lines found (the title and subtitle are not read aloud), 7 pickups and 5 small differences, each a rewording made on purpose or a spelling ("line" for "row", "it is" for "it's", "Agemalu" for "Acemoglu"). 52 tests.
+
+**Still open.** The comparison is a plain word-for-word diff. A retake left in a finished file shows as words the manuscript has nothing for, not as a "restart".
+
 ### 2026-10-13, second entry: the rules come out
 
 **What happened.** An audiobook engineer ran the code as it then stood over other narrators' books and sent seven points. Four were about the reports. Three were audio the editor should have left alone:
@@ -115,7 +159,7 @@ Each was a fixed rule meeting a case it didn't fit. Claude's first answer was mo
 
 **What changed.**
 
-- Removed: the alignment and its costs (`align.py`), the last-take and ad-lib rules, comps and pause ranges (`edit.py`), script parsing (`text.py`), and the script comparison (`verify.py`), with the commands `clean`, `verify`, `lines` and `transcribe`.
+- Removed: the alignment and its costs (`align.py`), the last-take and ad-lib rules, comps and pause ranges (`edit.py`), script parsing (`text.py`), and the script comparison (`verify.py`), with the commands `clean`, `verify`, `lines` and `transcribe`. (The script parsing and the comparison should not have gone; the entry above puts them back.)
 - Added: `pieces.py` lays the recording out as words, quiet, and the sounds between words. `markup.py` writes that as a transcript and reads the marked-up copy back. `cut.py` applies it. The commands are `transcript` and `cut`, and `batch` does both across a project.
 - The scorecard reads an edit list saved beside each finished file (`name.edit.json`) instead of rebuilding the edit. The sixteen recordings finished before this each had theirs saved from the old editor, and each matched its finished file to within 0.01 seconds.
 - `standards`, `scorecard`, `picture`, the transcription and the mastering are as they were. 37 tests.

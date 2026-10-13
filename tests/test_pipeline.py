@@ -55,7 +55,7 @@ def test_batch_writes_transcripts_cuts_what_is_marked_and_leaves_finished_work_a
     seen = []
     monkeypatch.setattr("punchroll.pipeline.transcript", lambda audio, dest, settings=None, log=print: seen.append(("transcript", dest.name)))
     monkeypatch.setattr("punchroll.pipeline.cut_and_master",
-                        lambda audio, markup, out, name, settings, mp3=True: seen.append(("cut", name)) or
+                        lambda audio, markup, out, name, settings, mp3=True, lines=None, script="": seen.append(("cut", name)) or
                         {"summary": {"raw_minutes": 9.0, "edited_minutes": 8.0, "cuts": 7}})
     assert main(["batch", str(tmp_path / "book.toml")]) == 0
     assert seen == [("transcript", "new.transcript.md"), ("cut", "marked")]
