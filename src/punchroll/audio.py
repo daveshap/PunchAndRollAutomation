@@ -150,6 +150,10 @@ def _true_abs_blocks(y: np.ndarray, block: int):
     Each block is resampled together with 64 samples of its neighbours and only its own part is kept: the
     resampler rings where its input is cut off, and in loud audio that ringing reads as a peak that isn't there.
     """
+    from .gpu import torch_cuda, true_abs_blocks
+    if torch_cuda() is not None:                       # the same numbers, worked out on the graphics card
+        yield from true_abs_blocks(y)
+        return
     pad = 64
     for a in range(0, len(y), block):
         lo, n = max(0, a - pad), min(block, len(y) - a)

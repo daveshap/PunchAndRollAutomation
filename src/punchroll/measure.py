@@ -136,10 +136,14 @@ def pitch(x: np.ndarray, sr: int, seconds: float = 100.0, lo: float = 60.0, hi: 
     frames = np.lib.stride_tricks.sliding_window_view(y, n + tmax)[::hop]
     level = 10 * np.log10(np.mean(frames[:, :n] ** 2, axis=1) + 1e-20)
     frames = frames[level > np.percentile(level, 95) - 25]
-    d = np.empty((len(frames), tmax + 1))
-    d[:, 0] = 1.0
-    for tau in range(1, tmax + 1):
-        d[:, tau] = np.sum((frames[:, :n] - frames[:, tau:tau + n]) ** 2, axis=1)
+    from .gpu import torch_cuda, yin_differences
+    if torch_cuda() is not None:                       # the same sums, worked out on the graphics card
+        d = yin_differences(frames, n, tmax)
+    else:
+        d = np.empty((len(frames), tmax + 1))
+        d[:, 0] = 1.0
+        for tau in range(1, tmax + 1):
+            d[:, tau] = np.sum((frames[:, :n] - frames[:, tau:tau + n]) ** 2, axis=1)
     norm = d[:, 1:] * np.arange(1, tmax + 1) / (np.cumsum(d[:, 1:], axis=1) + 1e-20)     # cumulative mean normalized difference
     found = []
     for row in norm:

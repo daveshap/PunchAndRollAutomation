@@ -7,7 +7,11 @@
   punchroll verify EDITED --script S   proof a finished file against its manuscript and ACX; writes no audio
   punchroll batch project.toml --proof   the same for every finished file in a project
   punchroll standards EDITED...        check finished files against ACX and ElevenLabs
-  punchroll scorecard project.toml     score every finished recording side by side
+  punchroll scorecard project.toml     score every finished recording side by side, on the finished files alone
+  punchroll readback EDITED --markup M check a finished file holds every word its mark-up kept, once and in order
+  punchroll clicks RAW EDITED          trace each click counted in a finished file back to the mark-up
+  punchroll lost RAW EDITED            words cut from a recording that are never said again
+  punchroll said draft|build P.toml    the finished transcripts: what the reader said on each recording
   punchroll picture FILE --at 3:08     a spectrogram of a passage, as a PNG
   punchroll models                     download the speech models once (about 480 MB)
 """
@@ -81,6 +85,29 @@ def main(argv=None) -> int:
     p.add_argument("-o", "--out", help="Markdown file to write (default: scorecard.md in the project's output folder)")
     p.add_argument("--listener", action="store_true",
                    help='add a trained listener\'s estimate of each file (needs pip install -e ".[listen]")')
+
+    p = sub.add_parser("readback", help="check a finished file holds every word its mark-up kept, once and in order")
+    p.add_argument("finished", help="the finished MP3 or WAV; its .edit.json beside it gives the joins")
+    p.add_argument("--markup", required=True, help="the marked-up transcript it was cut from")
+    p.add_argument("--config", help="TOML file overriding the default settings")
+
+    p = sub.add_parser("clicks", help="trace each click counted in a finished file back to the recording and the mark-up")
+    p.add_argument("raw", help="the recording")
+    p.add_argument("finished", help="the finished WAV, with its .edit.json beside it")
+    p.add_argument("--config", help="the settings the recording was cut with")
+    p.add_argument("--within", type=float, default=30.0, help="clicks within this many dB of the file's level (default: 30)")
+
+    p = sub.add_parser("lost", help="words cut from a recording that are never said again")
+    p.add_argument("raw", help="the recording")
+    p.add_argument("finished", help="the finished MP3 or WAV")
+    p.add_argument("--config", help="TOML file overriding the default settings")
+
+    p = sub.add_parser("said", help="the finished transcripts: what the reader said on each finished recording")
+    p.add_argument("step", choices=("draft", "build"), help="draft: list where the words differ from the reference; "
+                   "build: write the transcripts once every difference has a decision")
+    p.add_argument("project", nargs="+", help="project files, in the order the recordings should be listed")
+    p.add_argument("--only", help="only recordings whose name contains this text")
+    p.add_argument("--config", help="TOML file overriding the default settings")
 
     p = sub.add_parser("picture", help="a spectrogram of a passage, as a PNG")
     p.add_argument("audio")
@@ -199,6 +226,35 @@ def _run(a) -> int:
         print(f"Scorecard: {dest}")
         return 0
 
+    if a.cmd in ("readback", "clicks", "lost"):
+        from . import checks
+        for path in [p for p in (getattr(a, "markup", None), getattr(a, "raw", None), a.finished) if p]:
+            if not Path(path).is_file():
+                raise FileNotFoundError(f"not found: {path}")
+        settings = load_settings(a.config)
+        rec = _recognizer(settings)
+        if a.cmd == "readback":
+            markup = Path(a.markup).read_text(encoding="utf-8")
+            words = checks.heard_words(a.finished, rec)
+            rows = checks.readback(markup, words, checks.edit_map(a.finished).get("edl"))
+            print(checks.readback_text(rows, len(checks.kept_words(markup)),
+                                       sum(len(_toks(w["text"])) for w in words)))
+        elif a.cmd == "clicks":
+            print(checks.clicks_text(checks.trace_clicks(a.raw, a.finished, settings, a.within)))
+        else:
+            print(checks.lost_text(checks.lost_words(checks.heard_words(a.raw, rec), checks.heard_words(a.finished, rec))))
+        return 0
+
+    if a.cmd == "said":
+        from . import said
+        rec = _recognizer(load_settings(a.config))
+        if a.step == "draft":
+            left = said.draft(a.project, a.only, rec)
+            print(f"{left} difference(s) to decide" if left else "Every difference has a decision: run `punchroll said build`.")
+        else:
+            said.build(a.project, a.only, rec)
+        return 0
+
     if a.cmd == "picture":
         from .audio import read_mono
         from .picture import match_loudness, passage, spectrogram_png
@@ -260,6 +316,11 @@ def _toml(path) -> dict:
     return tomllib.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def _toks(text: str) -> list[str]:
+    from .text import toks
+    return toks(text)
+
+
 def _seconds(text: str) -> float:
     """'3:08.4' or '188.4' -> seconds."""
     parts = [float(p) for p in str(text).split(":")]
@@ -308,15 +369,17 @@ def _batch(a) -> int:
         audio = recording(base, name, ch["audio"])
         markup = base / ch["markup"] if ch.get("markup") else marks_dir / f"{name}.md"
         lines, desc = manuscript(ch)
+        ch_config = base / ch["config"] if ch.get("config") else config      # an entry can have settings of its own
+        ch_settings = load_settings(ch_config) if ch.get("config") else settings
         if a.report_only:                          # what each mark-up does, and how it stands against the manuscript: no audio
             if markup.is_file():
                 print(f"\n=== {name} ===")
-                done.append((name, cut_and_master(audio, markup, out, name, settings, mp3=mp3, report_only=True,
+                done.append((name, cut_and_master(audio, markup, out, name, ch_settings, mp3=mp3, report_only=True,
                                                   lines=lines, script=desc)["summary"]))
             else:
                 print(f"=== {name} === no mark-up at {markup}, so nothing to report")
             continue
-        made_from = [audio, proj_path] + ([config] if config else [])
+        made_from = [audio, proj_path] + ([ch_config] if ch_config else [])
         if lines is not None:                      # reports also depend on the selected manuscript
             made_from.append(base / (ch.get("script") or proj["script"]))
         if not markup.is_file():
@@ -327,7 +390,7 @@ def _batch(a) -> int:
             fresh = latest_transcript(destination)
             if not fresh.is_file() or fresh.stat().st_mtime < Path(audio).stat().st_mtime:
                 print(f"\n=== {name} === writing the transcript")
-                fresh = transcript(audio, destination, settings)
+                fresh = transcript(audio, destination, ch_settings)
             waiting.append((name, fresh, markup))
             continue
         made_from.append(markup)
@@ -335,7 +398,7 @@ def _batch(a) -> int:
             print(f"=== {name} === up to date, skipped (--force redoes it)")
             continue
         print(f"\n=== {name} ===")
-        done.append((name, cut_and_master(audio, markup, out, name, settings, mp3=mp3, lines=lines, script=desc)["summary"]))
+        done.append((name, cut_and_master(audio, markup, out, name, ch_settings, mp3=mp3, lines=lines, script=desc)["summary"]))
     if a.proof:
         print("\nFile                             length  pickups  small  not found    RMS  true peak  noise floor")
         for fname, v in proofed:

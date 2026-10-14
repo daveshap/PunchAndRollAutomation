@@ -120,6 +120,19 @@ def test_noise_reduction_turns_the_room_down_and_leaves_the_voice():
     assert np.max(np.abs(again - z)) < 1e-6                        # the same whatever size of piece it is worked in
 
 
+def test_mic_filter_takes_out_the_rumble_and_keeps_the_voice():
+    y, at = narration(hiss=0.0002, hum=0.0, rumble=0.003, pitch=150.0, voice=0.05)
+    words, pauses = (at > 0.1) & (at < 0.5), (at > 0.85) & (at < 1.45)
+    ms = replace(Settings().master, noise_reduction="off")
+    plain, _ = master(y.copy(), SR, ms, log=lambda *a: None)
+    filtered, _ = master(y.copy(), SR, replace(ms, mic_filter_hz=90.0), log=lambda *a: None)
+    low = butter(4, 50, fs=SR, output="sos")
+    assert level(sosfilt(low, plain), pauses) - level(sosfilt(low, filtered), pauses) > 8      # the rumble goes
+    voice_plain = tone(plain, words, 150) - tone(plain, words, 600)
+    voice_filtered = tone(filtered, words, 150) - tone(filtered, words, 600)
+    assert abs(voice_plain - voice_filtered) < 1.0                                                # the voice stays
+
+
 def test_rumble_under_the_voice_does_not_cost_the_voice_its_lowest_note():
     y, at = narration(hiss=0.0002, hum=0.0, rumble=0.003, pitch=123.0, voice=0.05)
     words = (at > 0.1) & (at < 0.5)

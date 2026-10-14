@@ -25,6 +25,8 @@ class MasterSettings:
     rms_db: float = -20.0              # ACX: -23 to -18 dB RMS
     limiter_ceiling_db: float = -3.5   # true-peak ceiling; ACX's limit is -3 dB, the rest is room for their meter
     highpass_hz: float = 70.0
+    mic_filter_hz: float = 0.0         # 0 = off. For a recording made with the microphone's own high-pass switched off:
+                                       # a second-order high-pass at this frequency, first in the chain, so it matches the rest
     compressor_threshold_db: float = -26.0
     compressor_ratio: float = 2.0
     noise_reduction: str = "auto"      # "auto": only if the noise floor would end above denoise_above_db; "on"; "off"

@@ -1,4 +1,4 @@
-"""What was done to a recording: a Markdown report to read, and the edit list as JSON for the scorecard."""
+"""What was done to a recording: a Markdown report to read, and the edit list as JSON."""
 from __future__ import annotations
 
 import json
