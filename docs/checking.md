@@ -3,7 +3,9 @@
 Use the finished transcript, edit report, signal measurements and visual inspection together to assess the recording.
 
 ```bash
-python -m punchroll transcript edited/ch01.wav -o review
+python -m punchroll readback edited/ch01.mp3 --markup markup/ch01.md
+python -m punchroll clicks raw/ch01.wav edited/ch01.wav --config settings.toml
+python -m punchroll lost raw/ch01.wav edited/ch01.mp3
 python -m punchroll standards "edited/*.mp3" -o edited/standards.md
 python -m punchroll scorecard project.toml --listener
 python -m punchroll picture edited/ch01.wav --at 3:08 --with raw/ch01.wav --with-at 3:14.5
@@ -14,6 +16,23 @@ python -m punchroll picture edited/ch01.wav --at 3:08 --with raw/ch01.wav --with
 Read the entire output transcript against the intended reading. Inspect cuts for clipped syllables, repeated material, missing words and unintended pauses. The cut report includes source and output locations, retained and removed sounds, changed pauses and removed words absent from the retained transcript. Use the source recording to resolve recognition errors and inspect the relevant passage with `picture`.
 
 When a manuscript is available, `verify` lists the full sentence and location of each difference. Decide whether the difference is an intended ad-lib, a recognition error or a reading that needs repair.
+
+### Read-back
+
+`readback` sets the words the mark-up kept beside the recognizer's words for the finished file. Each word kept should be there once, in order, and nothing struck should be back. A difference marked "spelling only" is the recognizer writing the same word two ways ("EU V" and "EUV"); a different word heard in the same place is usually the recognizer too, and is worth a listen when it falls near a join. A word missing at a join means the cut clipped it.
+
+### Clicks left in a finished file
+
+`clicks` lists every click the scorecard counts and traces each one to the recording and to its place in the mark-up: inside a pause, inside a sound, or inside a word.
+
+- The click detector times a click at about 10 ms, but the click itself runs 20 to 30 ms. Striking only the `{sound ...}` leaves the click's tail at the join, where it starts abruptly and stands out more than the click did.
+- For a click in a pause, strike the pause around it as well and write a fresh pause of the same length after the struck run (`~~{0.14} {sound 0.01 -24} {0.18}~~ {0.32}`), which is filled with room tone. Or lengthen a clean pause beside it and strike the rest.
+- A click inside a kept breath goes with the breath.
+- A click inside a word's span (a lip smack at the end of "them") can't be cut without cutting into the word.
+
+### Lost words
+
+`lost` sets the recognizer's words for the recording beside those for the finished file. A retake repeats what it replaces, so the cut words come back just after the cut. Cut words that never come back are an aside, a slip or a false start, or something the reader said that the edit lost. Read each one; the reader's last take and every rewording are the text.
 
 ## Standards
 
@@ -32,7 +51,9 @@ The `standards` report also gives the longest pause, click rate, tonal distance 
 
 ## Scorecard
 
-`scorecard` scores the finished product: it reads each finished WAV and nothing from the source recording.
+Score the finished product, never the raw recording. David, 14 Oct 2026: "you should not be scoring the raw file" and "you should be scoring the final product". How a take went in the room (how much was cut, how noisy the raw recording was, what processing did to it) doesn't count; what the finished file is like does.
+
+`scorecard` reads each finished WAV and nothing from the source recording.
 
 | Column | Measurement |
 |---|---|
@@ -50,6 +71,18 @@ Compare recordings made and processed under similar conditions. Use the individu
 `--listener` uses [torchaudio SQUIM Objective](https://docs.pytorch.org/audio/main/pipelines.html#squim-objective) to estimate PESQ in ten-second windows. It reports the mean, lower tenth and locations of the lowest-scoring windows. The model evaluates audio resampled to 16 kHz.
 
 Use low-scoring windows as inspection points alongside spectral and peak measurements. The model's score estimates signal quality; Claude assesses the wording, performance and edit.
+
+## Finished transcripts
+
+What the reader actually said on each finished recording, written out cleanly: the gold standard for the reader's wording. `said draft` aligns the recognizer's words for the finished file with the entry's reference text and lists every difference with the words around it; differences that are only spelling are decided straight away. Decide the rest by reading, in `said/NAME.decisions.json`:
+
+| Decision | Writes |
+|---|---|
+| `"s"` | What the recognizer heard: the reader's own wording. |
+| `"w"` | The reference's words: a name, a homophone, a number the recognizer spelled out. |
+| any other text | Exactly that; a leading `<` takes the comma or full stop off the word before. |
+
+To tell a mishearing from a rewording: names and homophones are the recognizer's; a changed word that the recognizer hears the same way in the raw recording and in the finished file is the reader's. `_fixes` in the same file mends capitals and commas where the reader's wording joins the written text. Punctuation is plain: a colon, semicolon, dash or bracket that the reader read through becomes a comma or a full stop.
 
 ## Breaths, pauses and noise
 
