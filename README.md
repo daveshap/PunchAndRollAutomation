@@ -13,6 +13,12 @@ python -m punchroll models
 
 On Windows with multiple Python versions, use `py -3.13` in place of `python`. Speech models are cached after downloading. `PUNCHROLL_MODELS` and `PUNCHROLL_CACHE` set the model and transcript cache folders.
 
+With an NVIDIA card, a CUDA build of PyTorch runs the heaviest number-crunching on the card: the trained listener, the 4x oversampling behind true peak and the limiter, and the scorecard's pitch tracker. The results are the same as on the CPU. `PUNCHROLL_DEVICE=cpu` keeps everything on the CPU.
+
+```bash
+python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu126
+```
+
 ## Edit a recording
 
 1. **Transcribe.** `python -m punchroll transcript raw/ch01.wav` writes `markup/ch01.transcript.md` with words, timestamps, pauses and nonword sounds.
