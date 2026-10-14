@@ -34,7 +34,21 @@ def test_what_is_wrong_is_named(tmp_path):
     f = measure_file(finished(tmp_path / "loud.wav", level=0.3, pause_s=6.0, head_s=0.3))
     acx = " | ".join(acx_problems(f))
     assert "RMS" in acx and "room tone at the head" in acx and "over 5 s" in acx
-    assert any("long pauses" in p for p in pvc_problems(f))
+    assert not any("pause" in p for p in pvc_problems(f))
+
+
+def test_pvc_reports_measurements_without_inventing_editorial_limits(monkeypatch):
+    def measured(path):
+        return {"file": path, "minutes": 50, "rms_db": -20, "true_peak_db": -3.5,
+                "noise_floor_db": -65, "head_s": 1.5, "tail_s": 3, "longest_pause_s": 4,
+                "format": "MP3", "channels": 1, "sample_rate": 44100, "kbps": 192,
+                "clicks_per_minute": 5, "tone": np.zeros(3)}
+    monkeypatch.setattr("punchroll.standards.measure_file", measured)
+    monkeypatch.setattr("punchroll.standards.tone_distance", lambda _: [0, 1, 8])
+    result = check_files(["one.mp3", "two.mp3", "three.mp3"])
+    assert result["files"][2]["tone_apart_db"] == 8
+    assert all(f["acx"] == [] and f["pvc"] == [] for f in result["files"])
+    assert "| 4 |" in standards_markdown(result)
 
 
 def test_the_set_is_judged_on_length_and_the_report_reads(tmp_path):

@@ -1,8 +1,8 @@
 # A set of recordings for `punchroll batch project.toml`. Paths are relative to this file.
 #
 # For each recording, batch writes markup/<name>.transcript.md if there is no mark-up yet, and cuts and
-# masters it once markup/<name>.md is there. A finished recording is left alone until its recording,
-# its mark-up, or the settings file changes.
+# masters it once Claude has saved markup/<name>.md. Complete audio and reports are reused until
+# a source, mark-up, project, settings, manuscript or renderer changes.
 
 out = "edited"              # where the finished files and reports go
 # markup = "markup"         # where the transcripts and the marked-up copies live (default)
@@ -18,9 +18,8 @@ name = "piece 02"
 audio = "piece 02 - take 1.wav"
 # markup = "elsewhere/piece 02.md"   # if the marked-up transcript is kept somewhere else
 
-# Work that has to follow a manuscript: name the manuscript and this recording's part of it, and the cut's
-# report also lists every difference between what was kept and the manuscript. `batch --report-only` writes
-# the reports without rendering audio.
+# To compare the chosen reading with a manuscript, name its section. The report lists the differences;
+# Claude decides how they relate to the intended delivery. `batch --report-only` writes a preview.
 [[chapter]]
 name = "ch01"
 audio = "raw/ch01.wav"
@@ -29,5 +28,5 @@ from = "Chapter 1"                  # text from the heading this recording start
 to = "Chapter 2"                    # and from the heading the next one starts at
 # lines = "301-604"                 # or pick the part by line numbers in a Markdown manuscript
 
-# To proof finished audio instead (no mark-up, nothing cut), point `audio` at the finished files and run
-#     punchroll batch project.toml --proof
+# `punchroll batch project.toml --proof` proofs each named finished output. For externally mastered
+# files, use a project whose audio entries point to those files.

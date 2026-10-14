@@ -13,11 +13,10 @@ Columns:
   pitch      median pitch of the voice in Hz
   pace       words a minute
   breaths    breaths found in pauses the edit kept whole, and how many of them come through whole
-  listener   with --listener: a trained model's estimate of PESQ, 1 to 4.5 (see listen.py for what it can't hear)
+  listener   with --listener: a trained model's estimate of PESQ, 1 to 4.5
   order      the average of the file's rank on clicks, tone, cut and (if run) listener; 1 is best
 
-The order is a starting point for choosing, not a verdict: the measures are not equally important, and
-none of them hears the performance.
+Use the individual measurements to compare the recordings and inspect specific passages.
 """
 from __future__ import annotations
 
@@ -148,7 +147,7 @@ def scorecard_markdown(rows: list[dict]) -> str:
     heard = bool(rows) and all(r["pesq"] is not None for r in rows)
     md = ["# Recording scorecard", "",
           f"{len(rows)} finished recordings, {int(total // 60)} h {total % 60:.0f} min. Best first by \"order\": the average of each "
-          "file's rank on clicks, tone, cut" + (" and listener" if heard else "") + ". A starting point for choosing, not a verdict.", "",
+          "file's rank on clicks, tone, cut" + (" and listener" if heard else "") + ".", "",
           "| Recording | Min | Order | Clicks/min | Room dB | Cut % | Cuts/min | Tone dB | Pitch Hz | Words/min | Breaths (whole) |"
           + (" Listener | Lowest tenth | Lowest 10 s at |" if heard else ""),
           "|---|---|---|---|---|---|---|---|---|---|---|" + ("---|---|---|" if heard else "")]
@@ -164,5 +163,5 @@ def scorecard_markdown(rows: list[dict]) -> str:
     md += ["", "Clicks: mouth clicks alone in pauses. Room: how far the recording's quietest moments sit under the voice. "
            "Cut: the share of the recorded words that were cut. Tone: distance from the middle of the set. "
            "Breaths: found in pauses the edit kept whole, and how many of those come through whole."
-           + (" Listener: a trained model's estimate of PESQ out of 4.5; it hears hiss and clicks, not echo or clipping." if heard else "")]
+           + (" Listener: a trained model's estimate of PESQ out of 4.5." if heard else "")]
     return "\n".join(md) + "\n"

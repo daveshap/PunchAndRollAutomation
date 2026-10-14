@@ -71,3 +71,27 @@ def test_an_edit_of_a_recording_reports_both_clocks():
     assert r["problem"] == "read 'window' for 'door'" and abs(r["raw"] - r["at"] - 30.0) < 1e-6
     md = "\n".join(manuscript_markdown(c))
     assert "| Line | Edited at | Recorded at | What differs | Manuscript |" in md and "| 2 | 0:03.4 | 0:33.4 |" in md
+
+
+def test_short_additions_before_between_and_after_lines_are_all_reported():
+    book = build_lines([("body", "Birds fly. Fish swim.")])
+    c = compare(book, heard("Ready Birds fly. Sorry Fish swim. Done", raw_offset=20))
+    assert [r["words"] for r in c["extra"]] == ["Ready", "Sorry", "Done"]
+    assert all(r["count"] == 1 and r["raw"] == r["at"] + 20 for r in c["extra"])
+    assert not c["pickups"] and not c["small"] and not c["not_found"]
+    md = "\n".join(manuscript_markdown(c))
+    assert "Ready" in md and "Sorry" in md and "Done" in md
+
+
+def test_an_empty_manuscript_still_reports_every_heard_word():
+    c = compare([], heard("Just testing"))
+    assert c["extra"] == [{"at": 1.0, "raw": None, "count": 2, "words": "Just testing"}]
+
+
+def test_long_manuscript_and_difference_text_are_not_truncated():
+    line = " ".join(f"word{i}" for i in range(100)) + " LASTWORD"
+    c = compare(build_lines([("body", line)]), [])
+    md = "\n".join(manuscript_markdown(c))
+    assert line in md
+    c = compare([], heard(line))
+    assert line in "\n".join(manuscript_markdown(c))

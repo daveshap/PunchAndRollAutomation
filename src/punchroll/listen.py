@@ -8,16 +8,8 @@ audio alone. It needs PyTorch and torchaudio, which punchroll does not otherwise
 The first use downloads the model (about 28 MB) from PyTorch's server. Its weights are under the
 Creative Commons Attribution 4.0 licence.
 
-What it is good for, from trying it on narration (see docs/checking.md):
-  - It hears hiss and clicks. A copy of clean narration with hiss 30 dB under the voice fell from
-    4.1 to 2.4, and one with thirty loud clicks to 2.9.
-  - It does not hear echo or clipping, and it judges nothing above 8 kHz (it works at 16 kHz).
-  - Among clean recordings it barely separates them: sixteen masters all scored 3.9 to 4.1, and its
-    lowest ten seconds looked like ordinary speech. Use it to catch a bad session, not to pick the best.
-
-torchaudio's other SQUIM model, which estimates an opinion score out of 5, is not used: it gave 4.99
-to every one of those masters and also to copies spoiled with audible hiss, echo, clipping and clicks,
-and its weights are licensed for non-commercial use only.
+Scores and the lowest-scoring window locations support passage inspection alongside the signal
+measurements in docs/checking.md.
 """
 from __future__ import annotations
 

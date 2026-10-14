@@ -15,6 +15,7 @@ so a slip of the pen can't move a cut.
 """
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 
@@ -37,7 +38,7 @@ Each line starts with its time in the recording. Leave the words themselves as t
 class Marks:
     keep: list[bool]                                 # per piece
     length: list[float | None]                       # per piece: a pause's new length, or None to leave it as recorded
-    added: dict[int, float] = field(default_factory=dict)    # a pause put in ahead of this piece, where there was none
+    added: dict[int, float] = field(default_factory=dict)    # ahead of this piece; len(pieces) means after the final piece
 
 
 def clock(t: float) -> str:
@@ -58,7 +59,7 @@ def _token(p: Piece) -> str:
 def write_transcript(pieces: list[Piece], name: str) -> str:
     """The recording as text, one run of speech to a line, ready to be marked up."""
     words = sum(1 for p in pieces if p.kind == "word")
-    span = pieces[-1].b - pieces[0].a
+    span = pieces[-1].b - pieces[0].a if pieces else 0.0
     out = [f"# {name}", "", HOW_TO.replace("-->", f"\n{words:,} words, {clock(span)} from the first to the last.\n-->"), ""]
     line, gap, said = [], 0.0, ""
     for p in pieces:
@@ -91,11 +92,16 @@ def read_markup(text: str, pieces: list[Piece]) -> Marks:
     for n, raw in enumerate(body.splitlines(), 1):
         if not raw.strip() or raw.lstrip().startswith(("#", ">")):
             continue
-        for tok in TOKEN.findall(STAMP.sub(r"\1", raw)):
+        line = STAMP.sub(r"\1", raw)
+        if TOKEN.sub("", line).strip():
+            raise ValueError(f"line {n}: malformed mark-up delimiter")
+        for tok in TOKEN.findall(line):
             if tok == "~~":
                 cutting, opened = not cutting, n
                 continue
             pause = re.fullmatch(r"\{\s*(\d+(?:\.\d+)?)\s*\}", tok)
+            if pause and not math.isfinite(float(pause.group(1))):
+                raise ValueError(f"line {n}: pause length must be finite")
             here = pieces[i] if i < len(pieces) else None
             if pause and here is not None and here.kind == "quiet":          # a pause that was measured, listed or not
                 marks.keep[i] = not cutting
@@ -106,8 +112,6 @@ def read_markup(text: str, pieces: list[Piece]) -> Marks:
             j = hidden_to(i)
             here = pieces[j] if j < len(pieces) else None
             if pause:                                                        # a pause where there was none
-                if here is None:
-                    raise ValueError(f"line {n}: the pause {tok} comes after the last word; the tail is set in the settings")
                 if not cutting:
                     marks.added[j] = marks.added.get(j, 0.0) + float(pause.group(1))
                 continue
@@ -118,6 +122,8 @@ def read_markup(text: str, pieces: list[Piece]) -> Marks:
                     raise ValueError(f"line {n}: can't read {tok}")
                 if here.kind != "sound":
                     raise ValueError(f"line {n}: {tok} is in the mark-up where the recording has {_token(here)!r} at {clock(here.a)}")
+                if " ".join(tok[1:-1].split()) != _token(here)[1:-1]:
+                    raise ValueError(f"line {n}: sound measurements must stay as written; strike the sound to cut it")
             elif here.kind != "word" or _token(here) != tok:
                 raise ValueError(f"line {n}: the mark-up has '{tok}' where the recording has {_token(here)!r} at {clock(here.a)}. "
                                  "Words, pauses and sounds must stay in the file, in order; strike them to cut them.")
@@ -128,7 +134,8 @@ def read_markup(text: str, pieces: list[Piece]) -> Marks:
     i = hidden_to(i)
     if i < len(pieces):
         raise ValueError(f"the mark-up stops at {clock(pieces[i].a)}, before the end of the recording ({_token(pieces[i])!r} is next)")
-    follows = False                                  # an unlisted quiet goes with the word (or sound) after it
+    follows = next((marks.keep[k] for k in range(len(pieces) - 1, -1, -1)
+                    if pieces[k].kind != "quiet"), True)
     for k in range(len(pieces) - 1, -1, -1):
         if pieces[k].kind != "quiet":
             follows = marks.keep[k]

@@ -4,27 +4,38 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .markup import clock
-from .proof import manuscript_markdown
+from .proof import _cell, manuscript_markdown
+from .text import toks
 
 
 def _ok(flag: bool) -> str:
     return "pass" if flag else "CHECK"
 
 
-def _cell(s: str, n: int = 200) -> str:
-    s = s.replace("|", "/").replace("\n", " ")
-    return s if len(s) <= n else s[:n - 1] + "…"
-
-
 def _at(t) -> str:
-    return "-" if t is None else clock(t)
+    if t is None:
+        return "-"
+    seconds, milliseconds = divmod(round(max(0, float(t)) * 1000), 1000)
+    minutes, seconds = divmod(seconds, 60)
+    return f"{minutes}:{seconds:02d}.{milliseconds:03d}"
+
+
+def removed_words_not_retained(removed: list[dict], kept: list[dict]) -> list[dict]:
+    """Source words containing normalized tokens absent from the entire retained transcript."""
+    retained = {t for word in kept for t in toks(word["text"])}
+    return [dict(word, unmatched_tokens=missing) for word in removed
+            if (missing := [t for t in toks(word["text"]) if t not in retained])]
 
 
 def write_reports(out_dir: Path, name: str, res: dict, audio: str, markup: str, metrics: dict | None) -> dict:
     s = res["summary"]
     data = {"name": name, "audio": audio, "markup": markup, "summary": s, "master": metrics,
             "cuts": res["cuts"], "pauses": res["pauses"], "edl": res["edl"]}
+    for key in ("kept", "sounds", "removed_words", "render_version"):
+        if key in res:
+            data[key] = res[key]
+    if "removed_words" in res and "kept" in res:
+        data["removed_words_not_retained"] = removed_words_not_retained(res["removed_words"], res["kept"])
     if res.get("manuscript"):
         data["manuscript"] = res["manuscript"]
     stem = name if metrics else f"{name}.dry-run"      # a dry run never overwrites a finished recording's files
@@ -54,11 +65,32 @@ def write_reports(out_dir: Path, name: str, res: dict, audio: str, markup: str, 
         md += [f"Manuscript: {res['manuscript']['script']}", ""] + manuscript_markdown(res["manuscript"]) + [""]
     md += ["## Cuts", "", "Everything the mark-up struck, in order, and the pause that now stands between the words either side.", "",
            "| Recorded at | Edited at | Seconds out | Pause left | What |", "|---|---|---|---|---|"]
-    md += [f"| {_at(c['raw'])} | {_at(c['clean'])} | {c['seconds']:.2f} | "
-           + ("-" if c["pause_s"] is None else f"{c['pause_s']:.2f} s") + f" | {_cell(c['words'])} |" for c in res["cuts"]]
+    md += [f"| {_at(c['raw'])} | {_at(c['clean'])} | {c['seconds']:.3f} | "
+           + ("-" if c["pause_s"] is None else f"{c['pause_s']:.3f} s") + f" | {_cell(c['words'])} |" for c in res["cuts"]]
+    if "removed_words_not_retained" in data:
+        md += ["", "## Removed words absent from the retained transcript", "",
+               "Every cut word containing a normalized token that appears nowhere in the retained transcript. "
+               "Vocabulary uses the same number and spelling normalization as manuscript proofing.", ""]
+        if data["removed_words_not_retained"]:
+            md += ["| Recorded from | Recorded to | Removed word | Tokens absent |", "|---|---|---|---|"]
+            md += [f"| {_at(w['raw'])} | {_at(w['raw_end'])} | {_cell(w['text'])} | "
+                   f"{_cell(' '.join(w['unmatched_tokens']))} |" for w in data["removed_words_not_retained"]]
+        else:
+            md.append("None.")
+    if "sounds" in res:
+        md += ["", "## Nonword sounds", "",
+               "Every marked nonword sound, including those retained, with its measured level relative to the voice.", ""]
+        if res["sounds"]:
+            md += ["| Piece | Decision | Recorded from | Recorded to | Edited from | Edited to | Seconds | Level (dB) |",
+                   "|---|---|---|---|---|---|---|---|"]
+            md += [f"| {p['piece']} | {'kept' if p['kept'] else 'cut'} | {_at(p['raw'])} | {_at(p['raw_end'])} | "
+                   f"{_at(p['at'])} | {_at(p['end'])} | {p['seconds']:.3f} | "
+                   + ("-" if p.get("level_db") is None else f"{p['level_db']:.1f}") + " |" for p in res["sounds"]]
+        else:
+            md.append("None.")
     changed = [j for j in res["pauses"] if j["was_s"] is not None]
     if changed:
         md += ["", "## Pauses changed", "", "| Recorded at | Edited at | Was | Now |", "|---|---|---|---|"]
-        md += [f"| {_at(j['raw'])} | {_at(j['clean'])} | {j['was_s']:.2f} s | {j['now_s']:.2f} s |" for j in changed]
+        md += [f"| {_at(j['raw'])} | {_at(j['clean'])} | {j['was_s']:.3f} s | {j['now_s']:.3f} s |" for j in changed]
     (out_dir / f"{stem}.report.md").write_text("\n".join(md) + "\n", encoding="utf-8")
     return data

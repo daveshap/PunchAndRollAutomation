@@ -1,6 +1,7 @@
 """Command line: punchroll <command> ...
 
   punchroll transcript RAW...          write each recording's transcript, ready to be marked up
+  punchroll assemble PLAN -o FILE.wav  assemble explicit spans from recordings and pickups
   punchroll cut RAW --markup FILE      cut the recording as its marked-up transcript says, and master it
   punchroll batch project.toml         do both for every recording in a project file
   punchroll verify EDITED --script S   proof a finished file against its manuscript and ACX; writes no audio
@@ -42,6 +43,10 @@ def main(argv=None) -> int:
     p.add_argument("-o", "--out", default="markup", help="folder for the transcripts (default: ./markup)")
     p.add_argument("--config", help="TOML file overriding the default settings")
 
+    p = sub.add_parser("assemble", help="assemble explicit source ranges and pickups into an unmastered float WAV")
+    p.add_argument("plan", help="JSON plan naming sources, clips, and sample_rate")
+    p.add_argument("-o", "--out", required=True, help="WAV output; a source map is saved beside it as .assembly.json")
+
     p = sub.add_parser("cut", help="cut a recording as its marked-up transcript says, and master it")
     p.add_argument("audio")
     p.add_argument("--markup", required=True, help="the marked-up transcript")
@@ -63,7 +68,7 @@ def main(argv=None) -> int:
     p.add_argument("--only", help="run only recordings whose name contains this text")
     p.add_argument("--force", action="store_true", help="redo recordings that are already up to date")
     p.add_argument("--proof", action="store_true",
-                   help="for finished audio: don't cut anything, proof each file against its manuscript as verify does")
+                   help="proof named finished outputs against the manuscript; if absent, use the entry's audio as finished input")
     p.add_argument("--report-only", action="store_true",
                    help="write the reports and render no audio (with --proof, which never renders, it changes nothing)")
 
@@ -115,7 +120,32 @@ def _run(a) -> int:
         if missing:
             raise FileNotFoundError(f"not found: {', '.join(missing)}")
         for path in a.audio:
-            transcript(path, Path(a.out) / f"{Path(path).stem}.transcript.md", load_settings(a.config))
+            dest = transcript(path, Path(a.out) / f"{Path(path).stem}.transcript.md", load_settings(a.config))
+            print(f"Read the whole transcript: {dest}\nSave the marked copy as: {Path(a.out) / (Path(path).stem + '.md')}")
+        return 0
+
+    if a.cmd == "assemble":
+        import soundfile as sf
+        from .assembly import assemble_files, load_plan
+        plan, out = Path(a.plan), Path(a.out)
+        if out.suffix.lower() != ".wav":
+            raise ValueError("assemble output must be a .wav file")
+        sources, clips, sr = load_plan(plan)
+        report = out.with_suffix(".assembly.json")
+        for dest in (out, report):
+            for source in (plan, *sources.values()):
+                if (dest.resolve() == source.resolve()
+                        or (dest.exists() and source.exists() and dest.samefile(source))):
+                    raise ValueError(f"assembly output would overwrite an input: {source}")
+        result = assemble_files(sources, clips, sr)
+        audio = result.pop("audio")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        sf.write(str(out), audio, sr, subtype="FLOAT")
+        result.update(plan=str(plan.resolve()), output=str(out.resolve()))
+        report.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+        print(f"Unmastered assembly: {out}\nSource map: {report}")
+        print(f"{result['summary']['clips']} clips, {result['summary']['seconds']:.3f} seconds. "
+              "Transcribe this WAV to mark further edits, then cut and master it.")
         return 0
 
     if a.cmd == "cut":
@@ -237,7 +267,7 @@ def _seconds(text: str) -> float:
 
 
 def _batch(a) -> int:
-    from .pipeline import cut_and_master, finished, recording, recordings, transcript
+    from .pipeline import cut_and_master, finished, latest_transcript, recording, recordings, transcript
     proj_path = Path(a.project)
     proj, base = _toml(proj_path), proj_path.parent
     config = base / proj["config"] if proj.get("config") else None
@@ -262,12 +292,15 @@ def _batch(a) -> int:
             raise ValueError(f"[{name}] needs audio = \"...\"")
         if a.proof:                                # finished audio: recognize, compare, report; write no audio
             lines, desc = manuscript(ch, always=True)
-            files = recordings(base, ch["audio"])
+            masters = [out / f"{name}.{ext}" for ext in (("mp3", "wav") if mp3 else ("wav",))]
+            finished_audio = next((p for p in masters if p.is_file()), None)
+            files = [str(finished_audio)] if finished_audio else recordings(base, ch["audio"])
             if lines is None or not files:
                 raise ValueError(f"[{name}] --proof needs a script (in the entry or at the top) and audio that exists")
             print(f"\n=== {name} ===")
             out.mkdir(parents=True, exist_ok=True)
             for f in files:
+                print(f"Proofing: {f}")
                 _proof(f, lines, desc, out, rec)
                 v = json.loads((out / f"{Path(f).stem}.verify.json").read_text(encoding="utf-8"))
                 proofed.append((Path(f).name, v))
@@ -281,21 +314,23 @@ def _batch(a) -> int:
                 done.append((name, cut_and_master(audio, markup, out, name, settings, mp3=mp3, report_only=True,
                                                   lines=lines, script=desc)["summary"]))
             else:
-                print(f"=== {name} === no mark-up, so nothing to report")
+                print(f"=== {name} === no mark-up at {markup}, so nothing to report")
             continue
+        made_from = [audio, proj_path] + ([config] if config else [])
+        if lines is not None:                      # reports also depend on the selected manuscript
+            made_from.append(base / (ch.get("script") or proj["script"]))
         if not markup.is_file():
-            if finished(out, name, [audio], mp3) and not a.force:
+            if finished(out, name, made_from, mp3) and not a.force:
                 print(f"=== {name} === finished earlier; no mark-up on file, left as it is")
                 continue
-            fresh = marks_dir / f"{name}.transcript.md"
+            destination = marks_dir / f"{name}.transcript.md"
+            fresh = latest_transcript(destination)
             if not fresh.is_file() or fresh.stat().st_mtime < Path(audio).stat().st_mtime:
                 print(f"\n=== {name} === writing the transcript")
-                transcript(audio, fresh, settings)
+                fresh = transcript(audio, destination, settings)
             waiting.append((name, fresh, markup))
             continue
-        made_from = [audio, markup] + ([config] if config else [])
-        if lines:                                  # the report sets the cut beside the manuscript, so it follows the manuscript too
-            made_from.append(base / (ch.get("script") or proj["script"]))
+        made_from.append(markup)
         if not a.force and finished(out, name, made_from, mp3):
             print(f"=== {name} === up to date, skipped (--force redoes it)")
             continue
@@ -314,7 +349,7 @@ def _batch(a) -> int:
         for name, s in done:
             print(f"{name[:30]:30s}  {s['raw_minutes']:7.1f}  {s['edited_minutes']:6.1f}  {s['cuts']:4d}")
     for name, fresh, markup in waiting:
-        print(f"\nWaiting for mark-up: {name}\n  read    {fresh}\n  save as {markup}")
+        print(f"\nWaiting for mark-up: {name}\n  read the whole transcript: {fresh}\n  save the marked copy as:   {markup}")
     return 0
 
 

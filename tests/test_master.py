@@ -14,6 +14,27 @@ from punchroll.master import master, noise_profile, reduce_noise
 SR = 44100
 
 
+@pytest.mark.parametrize("signal,reason", [
+    (np.array([], dtype=np.float32), "empty"),
+    (np.zeros(16000, dtype=np.float32), "silent"),
+    (np.array([0.1, np.nan], dtype=np.float32), "nonfinite"),
+    (np.array([np.inf, 0.1], dtype=np.float32), "nonfinite"),
+])
+def test_unmasterable_edit_fails_before_gain_or_export(signal, reason):
+    original = signal.copy()
+    with pytest.raises(ValueError, match=reason):
+        master(signal, 16000, Settings().master, log=lambda *args: None)
+    np.testing.assert_array_equal(signal, original)
+
+
+def test_quiet_nonzero_signal_is_not_rejected_as_silence():
+    sr = 16000
+    quiet = (1e-10 * np.sin(2 * np.pi * 440 * np.arange(sr) / sr)).astype(np.float32)
+    output, metrics = master(quiet, sr, Settings().master, log=lambda *args: None)
+    assert np.isfinite(output).all()
+    assert metrics["rms_ok"]
+
+
 def test_true_peak_reads_the_same_wherever_the_blocks_fall():
     y = (0.5 * np.sin(2 * np.pi * 997 * np.arange(60000) / SR)).astype(np.float32)
     whole = true_peak_db(y)

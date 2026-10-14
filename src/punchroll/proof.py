@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import difflib
 from collections import defaultdict
+from html import escape
 
 from .markup import clock
 from .text import Line, toks
 
 ARTICLES = {"a", "an", "the", "this", "that", "these", "those"}
 SMALL = ARTICLES | {"and"}
-LONG_RUN = 6             # this many words in a row between two lines, with nothing in the manuscript for them, get a row of their own
 
 
 def _lev1(a: str, b: str) -> bool:
@@ -103,7 +103,7 @@ def compare(lines: list[Line], heard: list[dict]) -> dict:
                 owner[j1 + d] = sent_of[i1 + min(i2 - i1 - 1, d * (i2 - i1) // (j2 - j1))]
         elif tag == "insert":
             between = i1 == 0 or i1 == len(script) or sent_of[i1 - 1] != sent_of[i1]
-            if between and j2 - j1 >= LONG_RUN:        # a stretch of audio with no manuscript line: a retake left in, chatter
+            if between:                              # report every addition outside a manuscript line, however short
                 runs.append((j1, j2))
             else:
                 for j in range(j1, j2):
@@ -151,9 +151,12 @@ def compare(lines: list[Line], heard: list[dict]) -> dict:
             "pickups": pickups, "small": small, "not_found": not_found, "extra": extra}
 
 
-def _cell(s: str, n: int = 400) -> str:
-    s = s.replace("|", "/").replace("\n", " ")
-    return s if len(s) <= n else s[:n - 1] + "…"
+def _cell(s: str) -> str:
+    """Keep all text while protecting Markdown table boundaries and literal markup."""
+    s = escape(s, quote=False).replace("\r\n", "\n").replace("\r", "\n")
+    for char in "\\`*_[]|~":
+        s = s.replace(char, f"&#{ord(char)};")
+    return s.replace("\n", "<br>")
 
 
 def manuscript_markdown(c: dict, level: str = "##") -> list[str]:
@@ -169,7 +172,7 @@ def manuscript_markdown(c: dict, level: str = "##") -> list[str]:
         return f"| {clock(r['at'])} | {'-' if r.get('raw') is None else clock(r['raw'])} "
 
     md = [f"{level} Against the manuscript", "",
-          f"Lines found: {c['lines_found']} of {c['lines']}. The recognizer mishears too, so these are places to listen, not verdicts.", "",
+          f"Lines found: {c['lines_found']} of {c['lines']}.", "",
           f"{level}# Pickups", ""]
     if c["pickups"]:
         md += ["Lines where what was read differs from the manuscript.", "",
@@ -179,7 +182,7 @@ def manuscript_markdown(c: dict, level: str = "##") -> list[str]:
         md.append("None.")
     md += ["", f"{level}# Small differences", ""]
     if c["small"]:
-        md += ["An article, a plural, or a spelling the recognizer varies on. Many are the recognizer's; some are real misreads.", "",
+        md += ["Article, plural and near-spelling differences.", "",
                f"| Line {head}| What differs | Manuscript |", f"|---{rule}|---|---|"]
         md += [f"| {r['line']} {at(r)}| {_cell(r['problem'])} | {_cell(r['text'])} |" for r in c["small"]]
     else:
@@ -194,7 +197,7 @@ def manuscript_markdown(c: dict, level: str = "##") -> list[str]:
         md.append("None. Every line of the manuscript section was read.")
     if c["extra"]:
         md += ["", f"{level}# In the audio and not in the manuscript", "",
-               "Six or more words in a row, between two lines, that the manuscript has nothing for: a retake left in, an aside, an added sentence.", "",
+               "Words before, between, or after manuscript lines with no matching manuscript text.", "",
                f"{head}| Words | What was said |", f"{rule}|---|---|"]
         md += [f"{at(r)}| {r['count']} | {_cell(r['words'])} |" for r in c["extra"]]
     return md

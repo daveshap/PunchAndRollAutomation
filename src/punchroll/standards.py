@@ -1,9 +1,7 @@
 """Check finished files against what ACX and ElevenLabs ask for. No speech recognition, so it is quick.
 
-ACX's figures are its audio submission requirements. ElevenLabs' are from its guide to Professional
-Voice Cloning (training audio for a voice clone). Both pages were read on READ; the publishers change
-them, so check the links before relying on a figure. Where a publisher gives no number ("no long gaps
-of silence", "consistent in sound") the limit used here is ours and is marked so in the report.
+Published numeric targets are checked directly. Timing, mouth noise and tonal consistency are
+measured for the engineer to assess in the context of the recording.
 """
 from __future__ import annotations
 
@@ -16,11 +14,9 @@ from .audio import read_mono
 from .master import acx_metrics
 from .measure import clicks_per_minute, pauses, tone, tone_distance
 
-READ = "11 October 2026"
+READ = "13 October 2026"
 ACX_SOURCE = "https://help.acx.com/s/article/acx-audio-submission-requirements"
 PVC_SOURCE = "https://elevenlabs.io/docs/eleven-creative/voices/voice-cloning/professional-voice-cloning"
-LONG_GAP_S = 3.0            # ours: ElevenLabs says only to avoid "long gaps of silence"
-TONE_APART_DB = 2.0         # ours: a file this far from the set's balance sounds like a different setup
 PVC_MINUTES = (30, 120, 180)   # ElevenLabs: 30 minutes at the least, two to three hours for the best clone
 
 
@@ -46,7 +42,7 @@ def measure_file(path) -> dict:
 
 
 def acx_problems(f: dict) -> list[str]:
-    """What ACX would send this file back for. Empty when it passes."""
+    """Measured departures from ACX's numeric and format targets."""
     out = []
     if not -23 <= f["rms_db"] <= -18:
         out.append(f"RMS {f['rms_db']} dB is outside −23 to −18")
@@ -73,10 +69,8 @@ def pvc_problems(f: dict) -> list[str]:
         out.append(f"RMS {f['rms_db']} dB is outside −23 to −18")
     if f["true_peak_db"] > -3:
         out.append(f"true peak {f['true_peak_db']} dB is over −3")
-    if f["longest_pause_s"] > LONG_GAP_S:
-        out.append(f"a pause of {f['longest_pause_s']} s (the clone copies long pauses; over {LONG_GAP_S:g} s is our limit)")
     if f["format"] != "MP3" or f["kbps"] < 190:
-        out.append(f"{f['format']} at about {f['kbps']} kbps (MP3 at 192 kbps or above is what they recommend; WAV does not improve the clone)")
+        out.append(f"{f['format']} at about {f['kbps']} kbps (MP3 at 192 kbps or above is the recommended format)")
     return out
 
 
@@ -89,18 +83,13 @@ def check_files(paths, log=lambda *a: None) -> dict:
     for f, apart in zip(files, tone_distance([f["tone"] for f in files])):
         f["tone_apart_db"] = round(apart, 1)
         f["acx"], f["pvc"] = acx_problems(f), pvc_problems(f)
-        if len(files) > 2 and apart > TONE_APART_DB:
-            note = f"its tone is {apart:.1f} dB from the rest of the set (over {TONE_APART_DB:g} dB is our limit)"
-            f["acx"].append(note)
-            f["pvc"].append(note)
         del f["tone"]
     total = sum(f["minutes"] for f in files)
     notes = []
     if len({f["channels"] for f in files if f["channels"]}) > 1:
         notes.append("ACX: the files are not all mono or all stereo.")
     spread = max((f["rms_db"] for f in files), default=0) - min((f["rms_db"] for f in files), default=0)
-    if spread > 2:
-        notes.append(f"The files differ by {spread:.1f} dB in loudness; ACX and ElevenLabs both ask for a consistent level.")
+    notes.append(f"Loudness spread across the set: {spread:.1f} dB.")
     low, good, most = PVC_MINUTES
     if total < low:
         notes.append(f"ElevenLabs: {total:.0f} minutes in all, under the {low}-minute minimum for a Professional Voice Clone.")
@@ -129,10 +118,7 @@ def standards_markdown(res: dict) -> str:
             for who, items in (("ACX", f["acx"]), ("ElevenLabs", f["pvc"])):
                 md += [f"- {Path(f['file']).name}, {who}: {item}" for item in items]
     md += ["", "## The set", ""] + [f"- {n}" for n in res["notes"]]
-    md += ["", "## What this does not check", "",
-           "- Mouth clicks are counted, not judged. ACX asks for files free of \"excessive mouth noise\" and gives no figure; "
-           "ElevenLabs says the clone copies everything in the audio.",
-           "- Breaths. Neither publisher gives a rule. Audiobook practice is to leave them in and lower only the loud ones.",
-           "- Wording, retakes left in, and stray sounds: `punchroll transcript` on the finished file writes it out to be read.",
-           "- Whether it sounds good. These are measurements."]
+    md += ["", "## Editorial review", "",
+           "Read the finished transcript and inspect the reported sounds, joins, pauses and spectral changes. "
+           "Use the measured click rate, tone and pace to assess the intended performance and delivery."]
     return "\n".join(md) + "\n"

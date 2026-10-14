@@ -1,106 +1,79 @@
-# How it works
+# Editing and mastering
 
-Claude does the editing. The program does three things around that: it writes down what is in the recording, it carries out the mark-up exactly, and it masters the result. It makes no decision about the reading.
+## Transcript
 
-## 1. Transcribe
+`transcript` uses Silero voice activity detection and Parakeet word recognition to produce timed words. Recognition runs in chunks and caches completed work. Additional decoding covers energetic sounds missed by the detector and speech stretches that returned no words.
 
-Silero VAD finds the stretches of speech. Neighboring stretches are grouped into chunks of up to 20 seconds, because a short phrase decoded on its own can come back empty while the same words decoded with their neighbors don't. Each chunk is transcribed by NVIDIA Parakeet TDT 0.6B v2 (int8 ONNX, through sherpa-onnx), which gives a timestamp for every token. Tokens are joined into words; punctuation is attached to a word without stretching its end time.
+`pieces.py` measures word boundaries, quiet and nonword sounds. Each sound has a duration and level relative to the voice. `markup.py` writes the sequence as readable text:
 
-Two checks keep speech from going unheard:
-
-- **Sound the detector left out.** The detector sometimes starts a stretch late, ends one early, or misses a short phrase or a muttered aside between two pauses. Any sound that stays within 25 dB of the voice's level for 0.15 seconds or more, and comes within 15 dB of it, is added to the detector's stretches.
-- **A stretch that comes back empty.** The recognizer can drop a short stretch at the end of a long chunk. A stretch with no words is decoded again on its own.
-
-Every finished chunk is written to the transcript cache immediately, so an interrupted run resumes where it stopped, and a finished transcript is reused whenever the same recording is opened again.
-
-## 2. Lay the recording out as pieces
-
-The recognizer's word times can swallow the silence after a word, so the edges are measured from the audio: 5 ms energy frames, the room's own level taken from the frames with no speech, and "quiet" defined as less than 12 dB above that.
-
-From the first word to the last, the recording becomes one unbroken run of pieces (`pieces.py`):
-
-- **Words.** Each runs from where the voice starts to where it stops.
-- **Quiet.** The quiet stretches between words.
-- **Sounds.** Anything between words that rises out of the quiet and is not a recognized word: a breath, a mouth click, a bump, a cut-off syllable. Each is given its length and its loudest moment in dB against the voice. A flicker shorter than 0.04 seconds and more than 30 dB under the voice is the room's own noise and stays part of the quiet.
-
-A sound at the voice's own level that the recognizer gave no word for (it smooths "Th— The easy things" into the sentence alone, and has no word for a cough) is found the same way and listed as a sound.
-
-## 3. The transcript and the mark-up
-
-`punchroll transcript` writes the pieces out as text (`markup.py`), one run of speech to a line, each line starting with its time in the recording:
-
-```
-3:11.7  Learning by trial and error. {0.75}
-
-3:14.1  Instead of being shown the right answer, {0.27} the system tries actions and receives R D. {1.76}
-
-3:21.5  Instead of being shown the right answer, {0.26} the system tries actions, {0.24} receives a reward or penalty, and gradually adjusts towards whatever earns more reward. {0.25} {sound 0.11 -24} {0.10} {sound 0.18 -36} {0.21}
+```text
+0:12.0  The system receives R D. {1.76}
+0:16.0  The system receives a reward or penalty. {0.25} {sound 0.11 -24} {0.50}
 ```
 
-`{0.75}` is a pause of 0.75 seconds. `{sound 0.11 -24}` is a sound of 0.11 seconds, 24 dB under the voice. A gap shorter than 0.15 seconds with no sound in it is not listed; it goes with the word after it.
+Claude reads the entire sequence and chooses the intended reading. Use surrounding sentences and the actual recording to distinguish retakes, deliberate repetition, ad-libs, breaths and unwanted sounds. A manuscript supplies context and comparison. The edit follows the intended spoken delivery.
 
-Claude reads the whole transcript and saves a marked copy:
+Save the marked copy separately from the generated transcript. Repeated transcription preserves existing files and writes a numbered copy.
 
-| Mark | Meaning |
+## Markup
+
+| Syntax | Meaning |
 |---|---|
-| `~~struck through~~` | Cut. Words, pauses and sounds are struck the same way. |
-| `{0.75}` changed to `{0.40}` | Make this pause 0.40 seconds. |
-| `{0.60}` written where there was no pause | Put one in. |
+| `~~text~~` | Cut the marked words, sounds or pauses. |
+| `{0.40}` replacing an existing pause | Set its duration in seconds. |
+| `{0.60}` inserted between pieces | Insert room tone for that duration. |
+| `{sound 0.11 -24}` | Measured nonword sound: 0.11 seconds, 24 dB below the voice. |
+| Blockquote or HTML comment | Editorial note, ignored by the renderer. |
 
-What is not struck is what the finished file holds. In the example the second line is an abandoned take, so it is struck whole, pause included, and the 0.75-second pause before it becomes the pause before the retake.
+Leave the original word and sound tokens in order. The parser verifies their correspondence with the source. Striking a sound removes it; leaving it unstruck preserves it. Claude sets pause timing for the sentence, title, transition or scene.
 
-The words themselves must stay in the file as written, struck or not. `punchroll cut` checks the marked file against the recording word for word and stops if they differ, naming the line, so a slip in the mark-up cannot move a cut.
+## Rendering
 
-## 4. Cut
+`cut.py` builds a timeline from retained source spans and selected pauses. Unchanged adjacent source spans are joined into one continuous span. Every positive sample range is retained, including short sounds.
 
-`cut.py` carries the mark-up out:
+A shortened pause keeps quiet from its two ends. A lengthened pause adds room tone in the middle. Inserted pauses use room tone from the recording. Splice fades suppress clicks without changing the selected timeline length. The edit map records the exact source and output positions.
 
-- **Nothing struck and no number changed between two words:** the audio is left exactly as recorded, breaths included.
-- **A pause made shorter:** quiet is taken out of its middle. **Made longer:** room tone is let into its middle.
-- **Something struck:** the audio leaves the recording after the last kept word and comes back at the next one. The pause between them is the sum of the pauses left unstruck between the two. It is built from the recording's own quiet beside each word, with room tone added only if more was asked for than the recording has there.
-- **Even where every pause at a cut was struck,** 0.05 seconds of the room is kept after the earlier word and 0.03 before the later one, so no word is clipped.
+Room tone is built from quiet source passages. `head` and `tail` add room tone at the output boundaries. Standard transcripts cover the first through last measured word or sound; short exterior source handles preserve the onset and decay at those boundaries.
 
-Room tone is taken from the recording itself: half-second stretches with no speech, near the 30th percentile of their levels (typical, not the quietest), with the fewest clicks, crossfaded together. Every join is an 8 ms crossfade. The file starts with `head` seconds of room tone and ends with `tail` seconds (1.5 and 3.0 unless the settings say otherwise).
+## Pickups and alternate sources
 
-## 5. Master
+`assemble` consumes a JSON plan with `sample_rate`, named `sources` and ordered `clips`. Paths are relative to the plan. Each clip selects `source`, `start` and `end` in seconds.
 
-1. Normalize to −22 dB RMS.
-2. Noise reduction, if `noise_reduction` is `"on"`, or if it is `"auto"` (the default) and the noise floor (quietest half second) would otherwise end above −62 dB. See below.
-3. Second-order high-pass at 70 Hz.
-4. Compressor: RMS detector on 10 ms windows, −26 dB threshold, 2:1, 10 ms attack, 150 ms release.
-5. Look-ahead limiter (6 ms) with a true-peak ceiling of −3.5 dB, and the gain searched so the result lands at −20 dB RMS. The limiter works from the waveform's level between samples (4x oversampled), not from the samples alone: on a bright or sibilant voice the two differ by 2 dB or more, and a limiter that only watches samples lets the true peak through. ACX's limit is −3 dB; the half decibel is room for their meter to read a little higher than this one.
+Optional `crossfade` overlaps the preceding clip by the stated duration. `gain_db` applies a chosen gain. `match_level_to` measures an explicitly selected reference range; `level_sample` selects comparable speech from the pickup for RMS matching. `note` records the reason for the selection. See [examples/assembly.json](../examples/assembly.json).
 
-**Noise reduction** follows the method of Audacity's Noise Reduction effect, and its three settings mean what Audacity's three sliders mean. The difference is that nobody selects a noise sample: it is found in the pauses.
+The command writes a float WAV and `.assembly.json` containing source paths, exact sample mappings, applied gains and peak measurements. Feed the assembled recording through the standard transcription, edit and mastering workflow. Preserve the assembly map with the final deliverables to trace pickups back to their recordings.
 
-- The recording is cut into overlapping windows of 46 ms, and each window into about a thousand frequency bands.
-- *The noise sample* is the average level of each band over the quieter half of the pauses. A pause here is a stretch where the level between 200 and 4000 Hz stays within 25 dB of the quietest twentieth of the recording, from a quarter second after the last louder sound to a quarter second before the next. The sample comes from the pauses as a whole and not from their one quietest moment, because a pause holds more than the room: faint mouth sounds, the low end of a breath. With only the room's hiss in the sample, those are left standing in a pause that is otherwise much quieter, and the leftover crackles.
-- A band holds only noise at a given moment unless it rises well above the sample: at `noise_sensitivity = 6`, about 11 dB above it in two of five neighbouring windows. Bands holding only noise are turned down by `noise_reduction_db`. Everything else passes as it is, so a breath that stands clear of the pause keeps its top and loses some of its low end.
-- The turning down fades in over 0.1 seconds after a sound and lifts 0.02 seconds ahead of one. Each band's gain is then averaged with `noise_smoothing` bands on either side, so no band is left open or shut alone.
-- The same rule runs from the first sample to the last, ahead of the compressor. A hum pitched inside the voice's range is not removed under speech: its bands are open while the voice is sounding in them, and the voice covers it. It fades within a tenth of a second of the voice stopping and is down by the full amount through every pause, along with everything else in the sample.
+## Mastering
 
-One thing is done differently from Audacity. The bands under the high-pass frequency take no part in the smoothing. They hold rumble and none of the voice, they are shut nearly all the time, and averaging them with the bands just above turned the lowest note of a low voice down with them: 3 dB at 100 to 140 Hz on a voice pitched near 125 Hz, at smoothing 6.
+The default chain is:
 
-If the recording has no pauses to sample (under half a second of them, or quiet that isn't 20 dB below the voice), noise reduction is skipped and the log says so.
+1. Normalize the working signal to -22 dB RMS.
+2. Apply profile-based noise reduction when selected.
+3. High-pass at 70 Hz.
+4. Compress at 2:1 with a -26 dB threshold.
+5. Limit to -3.5 dB true peak while targeting -20 dB RMS.
+6. Export WAV and 44.1 kHz mono 192 kbps CBR MP3; decode and measure the encoded MP3.
 
-The WAV master is written at the bit depth the recording came in at (16 bits at least, 24 at most; 16-bit output is dithered). The MP3 is resampled to 44.1 kHz if needed and encoded, then decoded again and measured: if resampling or the encoder pushed its true peak over the ceiling, it is encoded again slightly lower.
+The noise profile comes from quiet passages. Reduction operates across the recording, with attack, release and frequency smoothing to maintain continuous room sound. The three controls correspond to Audacity's noise reduction amount, sensitivity and smoothing. The low-frequency bands removed by the high-pass filter are excluded from smoothing into the voice.
 
-RMS, true peak (of the WAV and of the MP3), and noise floor are reported against ACX's limits. The peak passes on the true peak, not on the highest sample.
+Select `noise_reduction = "on"`, `"off"` or `"auto"` and adjust the amount for the recording. Automatic mode uses the configured projected noise floor. The WAV uses the source bit depth by default, with dither for 16-bit export. All settings are in [examples/settings.toml](../examples/settings.toml).
 
-## 6. Report
+## Reports
 
-`punchroll cut` writes two files beside the audio:
+A rendered recording produces:
 
-- `name.report.md`: the ACX measures, every cut in order with the words that went and the pause now standing there, and every pause whose length was changed.
-- `name.edit.json`: the same, plus the edit list (which stretch of the recording sits where in the finished file). The scorecard reads it.
+- `name.wav` and `name.mp3`: finished audio.
+- `name.report.md`: cuts, pause changes, sound decisions, removed-word audit, manuscript comparison when supplied, and mastering measurements.
+- `name.edit.json`: the report data, retained words and source/output edit map used by the scorecard.
 
-To read a finished file back, run `punchroll transcript` on it: the result is the same kind of transcript, and anything still wrong in it shows the way it did in the recording.
+`--report-only` writes `name.dry-run.report.md`. It leaves finished outputs intact.
 
-## 7. Against a manuscript
+The manuscript comparison normalizes written and spoken number forms, then lists differences with source and output times where available. It includes full sentences, small differences, missing lines and additional material.
 
-Optional, and a report only. `proof.py` reduces the manuscript and the audio's words to the same tokens (lowercase, accents removed, numbers spelled the way they are read, compounds reconciled in both directions) and runs a plain word-for-word comparison. Each word in the audio is then counted for the manuscript line it stands in, and each line is compared with the words read for it:
+After rendering, transcribe the finished audio into a separate review folder. Read it against the intended transcript and inspect the reported passages. Use [quality analysis](checking.md) to evaluate signal quality, delivery and consistency, then revise and render again as needed.
 
-- A difference of an article, a plural, or a near-spelling is "small"; anything else is a pickup. Both are listed the same way: line number, the time of the word, what differs, the manuscript's sentence.
-- A line with no words read for it is "not found", with the time where it was expected.
-- Six or more words in a row between two lines, with nothing in the manuscript for them, are listed on their own.
+## Batch
 
-`verify` runs it on a finished file's transcript. `cut --script` runs it on the words the mark-up kept, which have two times each: where they are in the recording and where they land in the edit.
+A project file names source recordings, markup paths, settings and optional manuscript sections. `batch` prepares transcripts for Claude, renders completed markups and reports the files awaiting edits. It checks both audio and report artifacts against the source, markup, project, settings, manuscript and renderer version before reusing a result.
+
+`batch --proof` selects a named finished output when present, or the entry's supplied audio for a project of externally mastered files. It prints the exact file being proofed. `--report-only` renders no audio.

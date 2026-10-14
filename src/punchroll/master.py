@@ -203,6 +203,12 @@ def reduce_noise(y: np.ndarray, sr: int, profile: np.ndarray, reduce_db: float =
 
 
 def master(y: np.ndarray, sr: int, ms: MasterSettings, log=print):
+    if y.ndim != 1 or not len(y):
+        raise ValueError("cannot master an empty or non-mono signal")
+    if not np.isfinite(y).all():
+        raise ValueError("cannot master an invalid signal containing nonfinite samples")
+    if not np.any(y):
+        raise ValueError("cannot master a silent signal; the edit contains no nonzero samples")
     pre = np.float32(10 ** ((-22 - rms_db(y)) / 20))
 
     def board(z):

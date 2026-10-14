@@ -1,0 +1,20 @@
+{
+  "sample_rate": 44100,
+  "sources": {
+    "chapter": "../raw/ch01.wav",
+    "pickup": "../raw/ch01-pickup.wav"
+  },
+  "clips": [
+    {"source": "chapter", "start": 0, "end": 32.4},
+    {
+      "source": "pickup",
+      "start": 1.2,
+      "end": 6.8,
+      "crossfade": 0.008,
+      "match_level_to": {"source": "chapter", "start": 24, "end": 30},
+      "level_sample": {"source": "pickup", "start": 1.5, "end": 6.4},
+      "note": "Replacement sentence"
+    },
+    {"source": "chapter", "start": 38.2, "end": 120, "crossfade": 0.008}
+  ]
+}

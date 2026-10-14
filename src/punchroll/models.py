@@ -1,4 +1,4 @@
-"""Download and locate the speech models. Everything runs offline after this.
+"""Download and locate the bundled speech models.
 
 Models come from the sherpa-onnx project's GitHub releases:
   - NVIDIA Parakeet TDT 0.6B v2 (English), int8 ONNX, about 480 MB

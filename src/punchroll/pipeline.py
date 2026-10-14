@@ -11,7 +11,7 @@ from pathlib import Path
 from .asr import Recognizer, transcribe
 from .audio import read_mono, wav_subtype, write_mp3, write_wav
 from .config import Settings, auto_threads
-from .cut import cut
+from .cut import RENDER_VERSION, cut
 from .markup import read_markup, write_transcript
 from .master import master
 from .models import transcripts_dir
@@ -41,20 +41,47 @@ def measure(audio, settings: Settings, log=print):
 
 
 def transcript(audio, dest, settings: Settings | None = None, log=print) -> Path:
-    """Write the recording's transcript, ready to be marked up, and return where it went."""
+    """Write a new transcript, preserving any existing copy, and return where it went."""
     _, _, _, pieces = measure(audio, settings or Settings(), log)
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(write_transcript(pieces, Path(audio).name), encoding="utf-8")
-    log(f"Transcript: {dest}")
-    return dest
+    text = write_transcript(pieces, Path(audio).name)
+    candidate, version = dest, 1
+    while True:
+        try:
+            with candidate.open("x", encoding="utf-8") as f:
+                f.write(text)
+            break
+        except FileExistsError:
+            version += 1
+            candidate = dest.with_name(f"{dest.stem}.{version}{dest.suffix}")
+    if candidate != dest:
+        log(f"Existing transcript preserved: {dest}")
+    log(f"Transcript: {candidate}")
+    return candidate
+
+
+def latest_transcript(dest) -> Path:
+    """Find the newest generated copy, including numbered copies saved without overwriting."""
+    dest = Path(dest)
+    pattern = re.compile(re.escape(dest.stem) + r"(?:\.\d+)?" + re.escape(dest.suffix))
+    copies = [p for p in dest.parent.iterdir() if p.is_file() and pattern.fullmatch(p.name)] if dest.parent.is_dir() else []
+    return max(copies, key=lambda p: p.stat().st_mtime_ns) if copies else dest
 
 
 def finished(out_dir, name, inputs, mp3=True) -> bool:
     """Whether this recording's finished files are there and newer than everything they were made from."""
     out = Path(out_dir)
-    made = [out / f"{name}.wav"] + ([out / f"{name}.mp3"] if mp3 else [])
-    if not all(p.is_file() for p in made):
+    made = [out / f"{name}.{ext}" for ext in ("wav", "report.md", "edit.json")]
+    if mp3:
+        made.append(out / f"{name}.mp3")
+    if not all(p.is_file() and p.stat().st_size for p in made):
+        return False
+    try:
+        edit = json.loads((out / f"{name}.edit.json").read_text(encoding="utf-8"))
+    except (ValueError, UnicodeError):
+        return False
+    if not isinstance(edit, dict) or edit.get("render_version") != RENDER_VERSION:
         return False
     return min(p.stat().st_mtime for p in made) > max(Path(p).stat().st_mtime for p in inputs)
 
@@ -68,15 +95,21 @@ def cut_and_master(audio, markup, out_dir, name=None, settings: Settings | None 
     """
     settings = settings or Settings()
     out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
     name = name or Path(audio).stem
+    extensions = ["dry-run.report.md"] if report_only else ["wav", "report.md", "edit.json"] + (["mp3"] if mp3 else [])
+    for dest in (out / f"{name}.{ext}" for ext in extensions):
+        for source in (Path(audio), Path(markup)):
+            if (dest.resolve() == source.resolve()
+                    or (dest.exists() and source.exists() and dest.samefile(source))):
+                raise ValueError(f"cut output would overwrite an input: {source}")
+    out.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     x, sr, room, pieces = measure(audio, settings, log)
     marks = read_markup(Path(markup).read_text(encoding="utf-8"), pieces)
     res = cut(x, sr, room, pieces, marks, settings, log, render=not report_only)
     del x
     gc.collect()
-    kept = res.pop("kept")
+    kept = res["kept"]
     if lines:
         res["manuscript"] = dict(compare(lines, kept), script=script)
         m = res["manuscript"]
@@ -100,8 +133,9 @@ def cut_and_master(audio, markup, out_dir, name=None, settings: Settings | None 
             + (f" (MP3 {metrics['mp3_true_peak_db']} dB)" if metrics.get("mp3_true_peak_db") is not None else "")
             + f", noise floor {metrics['noise_floor_db']} dB")
     data = write_reports(out, name, res, str(audio), str(markup), metrics)
+    report_stem = f"{name}.dry-run" if report_only else name
     log(f"Done in {(time.time() - t0) / 60:.1f} min: {s['raw_minutes']:.1f} min recorded -> {s['edited_minutes']:.1f} min. "
-        f"Report: {out / (name + '.report.md')}")
+        f"Report: {out / (report_stem + '.report.md')}")
     return data
 
 

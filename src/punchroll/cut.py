@@ -1,12 +1,7 @@
-"""Apply a marked-up transcript to the recording: cut what was struck, set the pauses that were written, join the rest.
-
-Nothing here decides anything about the reading. Every cut and every pause comes from the mark-up.
-What this file adds is the handiwork of a join: a few hundredths of a second of the room on each
-side of it so no word is clipped, a short crossfade, and room tone taken from the recording itself
-where a pause was made longer than the recording has.
-"""
+"""Render the selected source pieces and written pauses without making editorial choices."""
 from __future__ import annotations
 
+import math
 import numpy as np
 
 from .audio import rms_db
@@ -14,138 +9,197 @@ from .config import Settings
 from .markup import Marks
 from .pieces import Piece, Room
 
-EDGE_OUT = 0.05          # room kept after the word before a cut, even if the pause there was struck
-EDGE_IN = 0.03           # room kept ahead of the word after a cut
-XFADE = 0.008            # crossfade at every join
+RENDER_VERSION = 2
+JOIN_FADE = 0.004       # fades on either side of a splice; never overlap or shorten the timeline
 
 
 def cut(x: np.ndarray, sr: int, room: Room, pieces: list[Piece], marks: Marks, settings: Settings,
         log=print, render: bool = True) -> dict:
+    if sr <= 0 or len(marks.keep) != len(pieces) or len(marks.length) != len(pieces):
+        raise ValueError("invalid sample rate or mark-up piece count")
     keep, dur = marks.keep, len(x) / sr
-    voiced = [i for i, p in enumerate(pieces) if p.kind != "quiet" and keep[i]]
-    if not voiced:
-        raise ValueError("the mark-up cuts every word of the recording")
 
-    def want(k):                                       # how long a kept pause is to be
-        return pieces[k].length if marks.length[k] is None else marks.length[k]
+    def samples(seconds):
+        if not math.isfinite(seconds) or seconds < 0:
+            raise ValueError("pause lengths must be finite and nonnegative")
+        return int(round(seconds * sr))
 
-    # ---- the plan: stretches of the recording, with room tone between them where the mark-up asks for more
-    first, last = voiced[0], voiced[-1]
-    if first > 0:
-        lead = pieces[first - 1].length if pieces[first - 1].kind == "quiet" else 0.0
-    else:
-        q = room.before(0)
-        lead = q[1] - q[0] if q else 0.0
-    span_in = max(0.0, pieces[first].a - min(0.25, max(0.0, lead - 0.02)))
-    plan, joins = [("tone", settings.head)], []
-    for A, B in zip(voiced, voiced[1:]):
-        mid = range(A + 1, B)
-        asked = sum(want(k) for k in mid if pieces[k].kind == "quiet" and keep[k])
-        asked += sum(marks.added.get(k, 0.0) for k in range(A + 1, B + 1))
-        was = pieces[B].a - pieces[A].b                # all that lay between the two in the recording
-        cut_any = any(not keep[k] for k in mid)
-        if not cut_any and abs(asked - was) < 0.005:
-            continue                                   # as recorded: nothing to join
-        if not cut_any:                                # a pause made shorter or longer, nothing taken out
-            if asked < was:
-                E, S, F = pieces[A].b + 0.4 * asked, pieces[B].a - 0.6 * asked, 0.0
-            else:
-                E = S = (pieces[A].b + pieces[B].a) / 2
-                F = asked - was
+    for k, value in marks.added.items():
+        if not isinstance(k, int) or not 0 <= k <= len(pieces):
+            raise ValueError("inserted pause has an invalid piece position")
+        samples(value)
+    for k, value in enumerate(marks.length):
+        if value is not None:
+            samples(value)
+            if pieces[k].kind != "quiet":
+                raise ValueError("only quiet pieces can have a changed duration")
+
+    # A plan uses integer sample boundaries, so nothing disappears below a fade's length.
+    steps, pos = [], 0
+
+    def span(a, b):
+        nonlocal pos
+        a, b = max(0, int(round(a * sr))), min(len(x), int(round(b * sr)))
+        if b <= a:
+            return
+        if steps and steps[-1][0] == "span" and steps[-1][2] == a:
+            steps[-1] = ("span", steps[-1][1], b)
         else:
-            qa = A + 1 if pieces[A + 1].kind == "quiet" else None      # the quiet right after A in the recording
-            qb = B - 1 if pieces[B - 1].kind == "quiet" else None      # the quiet that leads into B
-            a_len = pieces[qa].length if qa is not None else 0.0
-            b_len = pieces[qb].length if qb is not None else 0.0
-            if qa is not None and qa == qb:
-                a_len = b_len = a_len / 2
-            a_kept, b_kept = qa is not None and keep[qa], qb is not None and keep[qb]
-            a_use = min(want(qa), a_len) if a_kept else min(EDGE_OUT, a_len)
-            b_use = min(want(qb), b_len) if b_kept else min(EDGE_IN, b_len)
-            over = a_use + b_use - asked               # the edges come out of the pause that was asked for
-            if over > 0 and b_kept:
-                give = min(over, max(0.0, b_use - min(EDGE_IN, b_len)))
-                b_use, over = b_use - give, over - give
-            if over > 0 and a_kept:
-                a_use -= min(over, max(0.0, a_use - min(EDGE_OUT, a_len)))
-            F = max(0.0, asked - a_use - b_use)
-            E, S = pieces[A].b + a_use, pieces[B].a - b_use
-        joins.append({"raw": pieces[A].b, "was_s": None if cut_any else round(was, 2), "asked_s": round(asked, 2),
-                      "now_s": round((E - pieces[A].b) + F + (pieces[B].a - S), 2), "after": A})
-        plan += [("span", span_in, E), ("tone", F)]
-        span_in = S
-    if last + 1 < len(pieces):
-        trail = pieces[last + 1].length if pieces[last + 1].kind == "quiet" else 0.0
-    else:
-        q = room.after(len(room.words) - 1)
-        trail = q[1] - q[0] if q else 0.0
-    plan += [("span", span_in, min(dur, pieces[last].b + min(0.30, max(0.0, trail - 0.04)))), ("tone", settings.tail)]
+            steps.append(("span", a, b))
+        pos += b - a
 
-    # ---- room tone for the head, the tail and any pause made longer: typical quiet, no clicks, several stretches joined
-    hop, nfr, L = room.hop, len(room.db), int(0.5 * sr)
-    cands = []
-    for f0 in range(0, max(0, nfr - L // hop), max(1, L // hop // 2)):
-        if not room.speech[f0:f0 + L // hop].any():
-            seg = x[f0 * hop:f0 * hop + L]
-            r = rms_db(seg)
-            if r > -90:
-                cands.append((r, 20 * np.log10(np.max(np.abs(seg)) + 1e-12) - r, f0 * hop))
-    xf = int(0.02 * sr)
-    ramp = (np.sin(np.linspace(0, np.pi / 2, xf)) ** 2).astype(np.float32)
-    if cands:
-        ref = np.percentile([c[0] for c in cands], 30)
-        pool = (sorted([c for c in cands if abs(c[0] - ref) < 2.0], key=lambda c: c[1])[:6]
-                or [min(cands, key=lambda c: abs(c[0] - ref))])
-        bed = x[pool[0][2]:pool[0][2] + L].copy()
-        for c in pool[1:]:
-            nxt = x[c[2]:c[2] + L]
-            bed = np.concatenate([bed[:-xf], bed[-xf:] * ramp[::-1] + nxt[:xf] * ramp, nxt[xf:]])
-    else:
-        log("  warning: no clean room tone found; the head, the tail and lengthened pauses will be silent.")
-        bed = np.zeros(L, dtype=np.float32)
+    def tone_step(n):
+        nonlocal pos
+        if n > 0:
+            if steps and steps[-1][0] == "tone":
+                steps[-1] = ("tone", steps[-1][1] + n)
+            else:
+                steps.append(("tone", n))
+            pos += n
+
+    tone_step(samples(settings.head))
+    # Old transcripts describe the first through last measured words. Retain their
+    # small exterior source handles; explicit endpoint pieces are obeyed directly.
+    if pieces and keep[0] and pieces[0].kind != "quiet":
+        q = room.before(0) if room.words else None
+        lead = min(0.25, max(0.0, q[1] - q[0] - 0.02)) if q else 0.0
+        span(max(0.0, pieces[0].a - lead), pieces[0].a)
+    output, insertions = {}, {}
+    for i in range(len(pieces) + 1):
+        if i in marks.added:
+            start = pos
+            tone_step(samples(marks.added[i]))
+            insertions[i] = (start / sr, pos / sr)
+        if i == len(pieces):
+            break
+        p = pieces[i]
+        if not keep[i]:
+            continue
+        start = pos
+        if p.kind != "quiet" or marks.length[i] is None:
+            span(p.a, p.b)
+        else:
+            wanted = samples(marks.length[i])
+            a, b = max(0, int(round(p.a * sr))), min(len(x), int(round(p.b * sr)))
+            available = max(0, b - a)
+            if wanted == available:
+                span(p.a, p.b)
+            elif wanted < available:
+                # Keep both sides of a shortened quiet, with no compulsory edge floor.
+                left = wanted // 2
+                span(a / sr, (a + left) / sr)
+                span((b - wanted + left) / sr, b / sr)
+            else:
+                middle = a + available // 2
+                span(a / sr, middle / sr)
+                tone_step(wanted - available)
+                span(middle / sr, b / sr)
+        output[i] = (start / sr, pos / sr)
+    if pieces and keep[-1] and pieces[-1].kind != "quiet":
+        q = room.after(len(room.words) - 1) if room.words else None
+        trail = min(0.30, max(0.0, q[1] - q[0] - 0.04)) if q else 0.0
+        span(pieces[-1].b, min(dur, pieces[-1].b + trail))
+    tone_step(samples(settings.tail))
+    total = pos
+
+    # Build a reusable room bed only when audio is requested and the plan needs it.
+    bed = None
+    if render and any(s[0] == "tone" for s in steps):
+        hop, nfr, length = room.hop, len(room.db), max(1, int(0.5 * sr))
+        frames = max(1, length // hop)
+        occupied = room.speech.copy()
+        for p in pieces:
+            if p.kind != "quiet":
+                a = max(0, int(p.a * sr // hop))
+                b = min(nfr, int(np.ceil(p.b * sr / hop)))
+                occupied[a:b] = True
+        candidates = []
+        for f0 in range(0, max(0, nfr - frames + 1), max(1, frames // 2)):
+            if not occupied[f0:f0 + frames].any():
+                seg = x[f0 * hop:f0 * hop + length]
+                level = rms_db(seg)
+                if len(seg) == length and level > -90:
+                    crest = 20 * np.log10(np.max(np.abs(seg)) + 1e-12) - level
+                    candidates.append((level, crest, f0 * hop))
+        xf = min(max(1, int(0.02 * sr)), length // 2)
+        bed_ramp = np.sin(np.linspace(0, np.pi / 2, xf)).astype(np.float32) ** 2
+        if candidates:
+            ref = np.percentile([c[0] for c in candidates], 30)
+            pool = (sorted([c for c in candidates if abs(c[0] - ref) < 2.0], key=lambda c: c[1])[:6]
+                    or [min(candidates, key=lambda c: abs(c[0] - ref))])
+            bed = x[pool[0][2]:pool[0][2] + length].copy()
+            for c in pool[1:]:
+                nxt = x[c[2]:c[2] + length]
+                if xf:
+                    bed = np.concatenate([bed[:-xf], bed[-xf:] * bed_ramp[::-1] + nxt[:xf] * bed_ramp, nxt[xf:]])
+                else:
+                    bed = np.concatenate([bed, nxt])
+        else:
+            log("  warning: no clean room tone found; inserted room tone will be silent.")
+            bed = np.zeros(length, dtype=np.float32)
 
     def tone(n):
-        out = bed.copy()
-        while len(out) < n:
-            out = np.concatenate([out[:-xf], out[-xf:] * ramp[::-1] + bed[:xf] * ramp, bed[xf:]])
-        return out[:n].astype(np.float32)
+        # Preallocate instead of repeatedly copying an ever-growing long pause.
+        if len(bed) >= n:
+            return bed[:n].copy()
+        out = np.empty(n, dtype=np.float32)
+        out[:len(bed)] = bed
+        at = len(bed)
+        while at < n:
+            overlap = min(xf, at)
+            take = min(len(bed) - overlap, n - at)
+            if overlap:
+                out[at - overlap:at] = out[at - overlap:at] * bed_ramp[:overlap][::-1] + bed[:overlap] * bed_ramp[:overlap]
+            out[at:at + take] = bed[overlap:overlap + take]
+            at += take
+        return out
 
-    # ---- render: overlap-add with short crossfades
-    xfade = int(XFADE * sr)
-    ramp_in = (np.sin(np.linspace(0, np.pi / 2, xfade)) ** 2).astype(np.float32)
-    steps = []
-    for st in plan:
-        if st[0] == "tone":
-            n = int(round(st[1] * sr))
-            if n >= 3 * xfade:
-                steps.append(("tone", n))
-        else:
-            a, b = int(st[1] * sr), int(st[2] * sr)
-            if b - a >= 3 * xfade:
-                steps.append(("span", (a, b)))
-    total = sum(s[1] if s[0] == "tone" else s[1][1] - s[1][0] for s in steps) - xfade * (len(steps) - 1)
     y = np.zeros(total, dtype=np.float32) if render else None
     pos, edl = 0, []
-    for n, (kind, arg) in enumerate(steps):
-        size = arg if kind == "tone" else arg[1] - arg[0]
+    for i, step in enumerate(steps):
+        kind = step[0]
+        size = step[1] if kind == "tone" else step[2] - step[1]
         if render:
-            c = tone(arg) if kind == "tone" else x[arg[0]:arg[1]].copy()
-            if n > 0:
-                c[:xfade] *= ramp_in
-            if n < len(steps) - 1:
-                c[-xfade:] *= ramp_in[::-1]
-            y[pos:pos + size] += c
+            chunk = tone(size) if kind == "tone" else x[step[1]:step[2]].copy()
+            # Short fades suppress splice clicks without changing chosen durations or
+            # importing audio from a cut region. Short pieces retain a full-level centre.
+            fade = min(int(JOIN_FADE * sr), (size - 1) // 2)
+            if fade:
+                ramp = np.sin(np.linspace(0, np.pi / 2, fade)).astype(np.float32) ** 2
+                if i:
+                    chunk[:fade] *= ramp
+                if i < len(steps) - 1:
+                    chunk[-fade:] *= ramp[::-1]
+            y[pos:pos + size] = chunk
         if kind == "span":
-            edl.append({"raw_in": arg[0] / sr, "raw_out": arg[1] / sr, "clean_in": pos / sr, "clean_out": (pos + size) / sr})
-        pos += size - xfade
+            edl.append({"raw_in": step[1] / sr, "raw_out": step[2] / sr,
+                        "clean_in": pos / sr, "clean_out": (pos + size) / sr})
+        pos += size
 
-    def clean_at(t):                                   # where a moment of the recording sits in the finished file
-        for e in edl:
-            if e["raw_in"] - 1e-6 <= t <= e["raw_out"] + 1e-6:
-                return e["clean_in"] + t - e["raw_in"]
-        return None
+    voiced = [i for i, p in enumerate(pieces) if p.kind != "quiet" and keep[i]]
+    joins = []
+    for a, b in zip(voiced, voiced[1:]):
+        mid = range(a + 1, b)
+        cut_any = any(not keep[k] for k in mid)
+        content_cut = any(not keep[k] and pieces[k].kind != "quiet" for k in mid)
+        changed = cut_any or any(marks.length[k] is not None for k in mid) or any(k in marks.added for k in range(a + 1, b + 1))
+        if changed:
+            now = output[b][0] - output[a][1]
+            joins.append({"raw": pieces[a].b, "clean": output[a][1],
+                          "was_s": None if content_cut else pieces[b].a - pieces[a].b,
+                          "asked_s": now, "now_s": now})
+    # Include explicit changes before the first retained sound/word and after the last.
+    first, last = (voiced[0], voiced[-1]) if voiced else (len(pieces), -1)
+    for i, p in enumerate(pieces):
+        if p.kind == "quiet" and (i < first or i > last) and (not keep[i] or marks.length[i] is not None):
+            now = output[i][1] - output[i][0] if i in output else 0.0
+            joins.append({"raw": p.a, "clean": output[i][0] if i in output else None,
+                          "was_s": p.length, "asked_s": now, "now_s": now})
+    for i, (a, b) in insertions.items():
+        if i <= first or i > last:
+            joins.append({"raw": pieces[i].a if i < len(pieces) else (pieces[-1].b if pieces else 0.0),
+                          "clean": a, "was_s": 0.0, "asked_s": b - a, "now_s": b - a})
 
-    # ---- what was done, for the report
     cuts, run = [], []
     for i in list(range(len(pieces))) + [None]:
         if i is not None and not keep[i]:
@@ -154,34 +208,27 @@ def cut(x: np.ndarray, sr: int, room: Room, pieces: list[Piece], marks: Marks, s
         said = [k for k in run if pieces[k].kind != "quiet"]
         if said:
             nxt = next((v for v in voiced if v > run[-1]), None)
-            a = next((k for k in range(run[0] - 1, -1, -1) if pieces[k].kind == "word" and keep[k]), None)
-            b = next((k for k in range(run[-1] + 1, len(pieces)) if pieces[k].kind == "word" and keep[k]), None)
-            left = None                                # what now stands between the kept words on either side
-            if a is not None and b is not None:
-                left = sum(want(k) if pieces[k].kind == "quiet" else pieces[k].length for k in range(a + 1, b) if keep[k])
-                left = round(left + sum(marks.added.get(k, 0.0) for k in range(a + 1, b + 1)), 2)
-            cuts.append({"raw": pieces[said[0]].a,
-                         "clean": clean_at(pieces[nxt].a) if nxt is not None else clean_at(pieces[last].b),
-                         "seconds": round(pieces[run[-1]].b - pieces[run[0]].a, 2), "pause_s": left,
+            prev = next((v for v in reversed(voiced) if v < run[0]), None)
+            a = next((k for k in reversed(voiced) if k < run[0] and pieces[k].kind == "word"), None)
+            b = next((k for k in voiced if k > run[-1] and pieces[k].kind == "word"), None)
+            left = output[b][0] - output[a][1] if a is not None and b is not None else None
+            clean = output[nxt][0] if nxt is not None else (output[prev][1] if prev is not None else samples(settings.head) / sr)
+            cuts.append({"raw": pieces[said[0]].a, "clean": clean,
+                         "seconds": pieces[run[-1]].b - pieces[run[0]].a, "pause_s": left,
                          "words": " ".join(pieces[k].text or f"[sound {pieces[k].length:.2f} s]" for k in said)})
         run = []
-    for j in joins:
-        j["clean"] = clean_at(pieces[j.pop("after")].b)
-    words = [p for p in pieces if p.kind == "word"]
-    kept, at = [], 0.0                                 # the words that stay, with their times in the recording and in the edit
-    for i in voiced:
-        p = pieces[i]
-        if p.kind == "word":
-            mid = clean_at((p.a + p.b) / 2)
-            at = at if mid is None else mid - p.length / 2
-            kept.append({"text": p.text, "at": at, "end": at + p.length, "raw": p.a, "raw_end": p.b})
-    return {
-        "audio": y, "sr": sr, "cuts": cuts, "pauses": joins, "edl": edl, "kept": kept,
-        "summary": {
-            "raw_minutes": round(dur / 60, 2), "edited_minutes": round(total / sr / 60, 2),
-            "words_heard": len(words), "words_cut": sum(1 for i, p in enumerate(pieces) if p.kind == "word" and not keep[i]),
-            "sounds_cut": sum(1 for i, p in enumerate(pieces) if p.kind == "sound" and not keep[i]),
-            "cuts": len(cuts), "pauses_changed": sum(1 for j in joins if j["was_s"] is not None),
-            "raw_noise_floor_db": round(room.floor, 1),
-        },
-    }
+    kept = [{"text": p.text, "at": output[i][0], "end": output[i][1], "raw": p.a, "raw_end": p.b}
+            for i, p in enumerate(pieces) if p.kind == "word" and keep[i]]
+    sounds = [{"piece": i, "raw": p.a, "raw_end": p.b, "seconds": p.length,
+               "level_db": p.level, "kept": bool(keep[i]),
+               "at": output[i][0] if i in output else None, "end": output[i][1] if i in output else None}
+              for i, p in enumerate(pieces) if p.kind == "sound"]
+    removed_words = [{"text": p.text, "raw": p.a, "raw_end": p.b}
+                     for i, p in enumerate(pieces) if p.kind == "word" and not keep[i]]
+    return {"audio": y, "sr": sr, "cuts": cuts, "pauses": joins, "edl": edl, "kept": kept,
+            "sounds": sounds, "removed_words": removed_words, "render_version": RENDER_VERSION,
+            "summary": {"raw_minutes": round(dur / 60, 2), "edited_minutes": round(total / sr / 60, 2),
+                        "words_heard": sum(p.kind == "word" for p in pieces), "words_cut": len(removed_words),
+                        "sounds_cut": sum(not s["kept"] for s in sounds), "cuts": len(cuts),
+                        "pauses_changed": sum(j["was_s"] is not None for j in joins),
+                        "raw_noise_floor_db": round(room.floor, 1)}}
