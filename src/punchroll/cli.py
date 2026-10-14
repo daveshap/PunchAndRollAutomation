@@ -12,6 +12,7 @@
   punchroll clicks RAW EDITED          trace each click counted in a finished file back to the mark-up
   punchroll lost RAW EDITED            words cut from a recording that are never said again
   punchroll said draft|build P.toml    the finished transcripts: what the reader said on each recording
+  punchroll said changes P.toml        every sentence the reader changed from the text he was given
   punchroll picture FILE --at 3:08     a spectrogram of a passage, as a PNG
   punchroll models                     download the speech models once (about 480 MB)
 """
@@ -103,10 +104,12 @@ def main(argv=None) -> int:
     p.add_argument("--config", help="TOML file overriding the default settings")
 
     p = sub.add_parser("said", help="the finished transcripts: what the reader said on each finished recording")
-    p.add_argument("step", choices=("draft", "build"), help="draft: list where the words differ from the reference; "
-                   "build: write the transcripts once every difference has a decision")
+    p.add_argument("step", choices=("draft", "build", "changes"), help="draft: list where the words differ from the "
+                   "reference; build: write the transcripts once every difference has a decision; changes: every "
+                   "sentence the reader changed from the text he was given, from the transcripts")
     p.add_argument("project", nargs="+", help="project files, in the order the recordings should be listed")
     p.add_argument("--only", help="only recordings whose name contains this text")
+    p.add_argument("--into", help="changes: write the counts and the log into this file, between its markers")
     p.add_argument("--config", help="TOML file overriding the default settings")
 
     p = sub.add_parser("picture", help="a spectrogram of a passage, as a PNG")
@@ -248,7 +251,9 @@ def _run(a) -> int:
     if a.cmd == "said":
         from . import said
         rec = _recognizer(load_settings(a.config))
-        if a.step == "draft":
+        if a.step == "changes":
+            said.changes(a.project, a.into, a.only)
+        elif a.step == "draft":
             left = said.draft(a.project, a.only, rec)
             print(f"{left} difference(s) to decide" if left else "Every difference has a decision: run `punchroll said build`.")
         else:

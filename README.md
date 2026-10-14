@@ -74,9 +74,10 @@ The finished transcripts: what the reader actually said on each finished recordi
 ```bash
 python -m punchroll said draft project.toml     # where the finished audio differs from the reference text
 python -m punchroll said build project.toml     # once every difference has a decision
+python -m punchroll said changes project.toml --into notes.md   # every sentence the reader changed
 ```
 
-`draft` lists each place where the recognizer's words for the finished file differ from the entry's reference text (`script` with `from`/`to`), and decides the ones that are only spelling. Claude decides the rest by reading: the reader's own wording, or a recognizer mishearing. `build` writes one transcript per recording and one with all of them. See [quality analysis](docs/checking.md#finished-transcripts).
+`draft` lists each place where the recognizer's words for the finished file differ from the entry's reference text (`script` with `from`/`to`), and decides the ones that are only spelling. Claude decides the rest by reading: the reader's own wording, or a recognizer mishearing. `build` writes one transcript per recording and one with all of them. `changes` sets each sentence of the text the reader was given beside his finished transcript and lists every one he changed, with his own words marked: the evidence for writing the next script the way he speaks. See [quality analysis](docs/checking.md#finished-transcripts).
 
 ## Pickups and alternate recordings
 
@@ -101,6 +102,7 @@ This writes a float WAV and a source/output map. Use the assembled recording in 
 | `clicks RAW EDITED` | Each click counted in the finished file, traced to the recording and its place in the mark-up. |
 | `lost RAW EDITED` | Stretches cut from the recording that are never said again: asides, slips, or something lost. |
 | `said draft/build P.toml` | The finished transcripts. |
+| `said changes P.toml` | Every sentence the reader changed from the text he was given, with a count per recording. |
 | `picture FILE --at 3:08` | Spectrogram of a passage; `--with RAW --with-at 3:14.5` compares source and result. |
 
 Add `--script book.md --from "Chapter 1" --to "Chapter 2"` to `cut` or `verify` to compare a manuscript section. Markdown, plain text and Word files are supported. Manuscript comparisons provide evidence for Claude's editorial judgment; the marked transcript controls the edit.
