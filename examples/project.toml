@@ -17,6 +17,7 @@ audio = "piece 01 - *.wav"  # one recording; a wildcard is fine if it matches on
 name = "piece 02"
 audio = "piece 02 - take 1.wav"
 # markup = "elsewhere/piece 02.md"   # if the marked-up transcript is kept somewhere else
+# config = "other-settings.toml"     # settings for this recording only, in place of the project's
 
 # To compare the chosen reading with a manuscript, name its section. The report lists the differences;
 # Claude decides how they relate to the intended delivery. `batch --report-only` writes a preview.

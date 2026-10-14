@@ -281,3 +281,23 @@ def test_cut_refuses_to_overwrite_a_hardlink_to_the_source(tmp_path, monkeypatch
     with pytest.raises(ValueError, match="would overwrite an input"):
         cut_and_master(source, markup, tmp_path, "chapter")
     assert source.read_bytes() == b"original recording"
+
+
+def test_an_entry_can_have_settings_of_its_own(tmp_path, monkeypatch):
+    for name in ("one", "two"):
+        (tmp_path / f"{name}.wav").write_bytes(b"audio")
+    (tmp_path / "markup").mkdir()
+    for name in ("one", "two"):
+        (tmp_path / f"markup/{name}.md").write_text("marked", encoding="utf-8")
+    (tmp_path / "settings.toml").write_text("tail = 2.0\n", encoding="utf-8")
+    (tmp_path / "own.toml").write_text("[master]\nmic_filter_hz = 90\n", encoding="utf-8")
+    project = tmp_path / "book.toml"
+    project.write_text('config = "settings.toml"\n[[chapter]]\nname = "one"\naudio = "one.wav"\n'
+                       '[[chapter]]\nname = "two"\naudio = "two.wav"\nconfig = "own.toml"\n', encoding="utf-8")
+    seen = {}
+    monkeypatch.setattr("punchroll.pipeline.cut_and_master", lambda *args, **kwargs: seen.update({args[3]: args[4]}) or
+                        {"summary": {"raw_minutes": 9.0, "edited_minutes": 8.0, "cuts": 7}})
+    assert main(["batch", str(project)]) == 0
+    assert seen["one"].master.mic_filter_hz == 0 and seen["one"].tail == 2.0
+    assert seen["two"].master.mic_filter_hz == 90
+

@@ -9,6 +9,8 @@ tail = 3.0             # seconds of room tone after the last word
 rms_db = -20.0               # ACX: -23 to -18 dB RMS
 limiter_ceiling_db = -3.5    # true-peak ceiling for the WAV and the MP3; ACX's limit is -3 dB, the rest is room for their meter
 highpass_hz = 70.0
+mic_filter_hz = 0.0          # 0 = off. For a recording made with the microphone's own high-pass switched off: a second-order
+                             # high-pass at this frequency, first in the chain, so it matches recordings made with the filter on
 compressor_threshold_db = -26.0
 compressor_ratio = 2.0
 noise_reduction = "auto"     # "auto": only when the noise floor would end above denoise_above_db; "on": always; "off": never

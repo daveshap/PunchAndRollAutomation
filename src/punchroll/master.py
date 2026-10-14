@@ -209,6 +209,8 @@ def master(y: np.ndarray, sr: int, ms: MasterSettings, log=print):
         raise ValueError("cannot master an invalid signal containing nonfinite samples")
     if not np.any(y):
         raise ValueError("cannot master a silent signal; the edit contains no nonzero samples")
+    if ms.mic_filter_hz > 0:                   # stands in for the microphone's high-pass, off when this was recorded
+        y = highpass(y, sr, ms.mic_filter_hz)
     pre = np.float32(10 ** ((-22 - rms_db(y)) / 20))
 
     def board(z):

@@ -308,15 +308,17 @@ def _batch(a) -> int:
         audio = recording(base, name, ch["audio"])
         markup = base / ch["markup"] if ch.get("markup") else marks_dir / f"{name}.md"
         lines, desc = manuscript(ch)
+        ch_config = base / ch["config"] if ch.get("config") else config      # an entry can have settings of its own
+        ch_settings = load_settings(ch_config) if ch.get("config") else settings
         if a.report_only:                          # what each mark-up does, and how it stands against the manuscript: no audio
             if markup.is_file():
                 print(f"\n=== {name} ===")
-                done.append((name, cut_and_master(audio, markup, out, name, settings, mp3=mp3, report_only=True,
+                done.append((name, cut_and_master(audio, markup, out, name, ch_settings, mp3=mp3, report_only=True,
                                                   lines=lines, script=desc)["summary"]))
             else:
                 print(f"=== {name} === no mark-up at {markup}, so nothing to report")
             continue
-        made_from = [audio, proj_path] + ([config] if config else [])
+        made_from = [audio, proj_path] + ([ch_config] if ch_config else [])
         if lines is not None:                      # reports also depend on the selected manuscript
             made_from.append(base / (ch.get("script") or proj["script"]))
         if not markup.is_file():
@@ -327,7 +329,7 @@ def _batch(a) -> int:
             fresh = latest_transcript(destination)
             if not fresh.is_file() or fresh.stat().st_mtime < Path(audio).stat().st_mtime:
                 print(f"\n=== {name} === writing the transcript")
-                fresh = transcript(audio, destination, settings)
+                fresh = transcript(audio, destination, ch_settings)
             waiting.append((name, fresh, markup))
             continue
         made_from.append(markup)
@@ -335,7 +337,7 @@ def _batch(a) -> int:
             print(f"=== {name} === up to date, skipped (--force redoes it)")
             continue
         print(f"\n=== {name} ===")
-        done.append((name, cut_and_master(audio, markup, out, name, settings, mp3=mp3, lines=lines, script=desc)["summary"]))
+        done.append((name, cut_and_master(audio, markup, out, name, ch_settings, mp3=mp3, lines=lines, script=desc)["summary"]))
     if a.proof:
         print("\nFile                             length  pickups  small  not found    RMS  true peak  noise floor")
         for fname, v in proofed:

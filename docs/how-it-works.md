@@ -56,7 +56,7 @@ The default chain is:
 
 The noise profile comes from quiet passages. Reduction operates across the recording, with attack, release and frequency smoothing to maintain continuous room sound. The three controls correspond to Audacity's noise reduction amount, sensitivity and smoothing. The low-frequency bands removed by the high-pass filter are excluded from smoothing into the voice.
 
-Select `noise_reduction = "on"`, `"off"` or `"auto"` and adjust the amount for the recording. Automatic mode uses the configured projected noise floor. The WAV uses the source bit depth by default, with dither for 16-bit export. All settings are in [examples/settings.toml](../examples/settings.toml).
+Select `noise_reduction = "on"`, `"off"` or `"auto"` and adjust the amount for the recording. Automatic mode uses the configured projected noise floor. For a recording made with the microphone's own high-pass filter switched off, `mic_filter_hz` adds a second-order high-pass ahead of everything else so its low end matches the rest; give that recording its own settings file with `config` in its project entry. The WAV uses the source bit depth by default, with dither for 16-bit export. All settings are in [examples/settings.toml](../examples/settings.toml).
 
 ## Reports
 
