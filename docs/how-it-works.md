@@ -64,7 +64,7 @@ A rendered recording produces:
 
 - `name.wav` and `name.mp3`: finished audio.
 - `name.report.md`: cuts, pause changes, sound decisions, removed-word audit, manuscript comparison when supplied, and mastering measurements.
-- `name.edit.json`: the report data, retained words and source/output edit map used by the scorecard.
+- `name.edit.json`: the report data, retained words and source/output edit map.
 
 `--report-only` writes `name.dry-run.report.md`. It leaves finished outputs intact.
 

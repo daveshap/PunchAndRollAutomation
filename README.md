@@ -73,7 +73,7 @@ This writes a float WAV and a source/output map. Use the assembled recording in 
 | `verify FILE --script book.docx` | Manuscript differences, pickups, small differences, missing lines, added material and ACX measurements. |
 | `batch project.toml --proof` | Manuscript proof reports for finished project audio. |
 | `standards FILES` | ACX and ElevenLabs measurements, format, pauses, mouth-click rate, tonal consistency and total duration. |
-| `scorecard project.toml --listener` | Comparative quality, pitch, pace, cut rate, breath survival and trained-listener estimates. |
+| `scorecard project.toml --listener` | The finished files side by side: clicks, noise floor, tone, pitch, pace and trained-listener estimates. |
 | `picture FILE --at 3:08` | Spectrogram of a passage; `--with RAW --with-at 3:14.5` compares source and result. |
 
 Add `--script book.md --from "Chapter 1" --to "Chapter 2"` to `cut` or `verify` to compare a manuscript section. Markdown, plain text and Word files are supported. Manuscript comparisons provide evidence for Claude's editorial judgment; the marked transcript controls the edit.

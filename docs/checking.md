@@ -32,19 +32,16 @@ The `standards` report also gives the longest pause, click rate, tonal distance 
 
 ## Scorecard
 
-`scorecard` reads each finished WAV, its source recording and its `.edit.json` map.
+`scorecard` scores the finished product: it reads each finished WAV and nothing from the source recording.
 
 | Column | Measurement |
 |---|---|
 | Clicks/min | Isolated short spikes in pauses, in the 1–10 kHz band. |
-| Room dB | Separation between source room noise and voice, in the 300–4000 Hz band. |
-| Cut % | Percentage of recognized source words removed. |
-| Cuts/min | Number of cuts per finished minute. |
+| Noise floor dB | The finished file's noise floor, as ACX measures it. |
 | Tone dB | Octave-band distance from the set's median balance. |
 | Pitch Hz | Median voice pitch over the middle 100 seconds. |
-| Words/min | Retained words per minute. |
-| Breaths (whole) | Detected breaths in untouched pauses and how many survive mastering whole. |
-| Order | Average rank on clicks, tonal distance, cut percentage and available listener scores. |
+| Words/min | Words in the finished file's transcript per minute, when it has been transcribed. |
+| Order | Average rank on clicks, tonal distance and available listener scores. |
 
 Compare recordings made and processed under similar conditions. Use the individual measurements to select a coherent set and identify passages to improve.
 

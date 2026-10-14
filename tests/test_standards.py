@@ -3,7 +3,7 @@ import numpy as np
 import soundfile as sf
 
 from punchroll.cli import _seconds, main
-from punchroll.scorecard import kept_pauses, rank_rows, scorecard_markdown
+from punchroll.scorecard import rank_rows, scorecard_markdown
 from punchroll.standards import acx_problems, check_files, measure_file, pvc_problems, standards_markdown
 
 SR = 44100
@@ -72,21 +72,14 @@ def test_seconds_from_a_clock_time():
 
 
 def test_rank_rows_orders_by_the_average_rank():
-    def row(name, clicks, cut, tone_bands, pesq=None):
-        return {"name": name, "minutes": 5.0, "clicks": clicks, "room": 60.0, "cut": cut, "cuts": 1.0,
-                "tone_bands": np.array(tone_bands, dtype=float), "pitch": 120.0, "pace": 140.0, "breaths": 3, "breaths_whole": 3,
+    def row(name, clicks, tone_bands, pesq=None):
+        return {"name": name, "minutes": 5.0, "clicks": clicks, "noise_floor": -80.0,
+                "tone_bands": np.array(tone_bands, dtype=float), "pitch": 120.0, "pace": 140.0,
                 "pesq": pesq, "pesq_low": pesq, "lowest": []}
-    rows = [row("clean", 1.0, 2.0, [0, 0, 0]), row("clicky", 9.0, 5.0, [0, 0, 0.3]), row("odd one out", 4.0, 9.0, [6, -6, 6])]
+    rows = [row("clean", 1.0, [0, 0, 0]), row("clicky", 3.0, [0, 0, 0.3]), row("odd one out", 4.0, [6, -6, 6])]
     rank_rows(rows)
     assert [r["name"] for r in sorted(rows, key=lambda r: r["order"])] == ["clean", "clicky", "odd one out"]
     assert rows[2]["tone"] > rows[0]["tone"]
     md = scorecard_markdown(rows)
     assert md.index("| clean |") < md.index("| clicky |") < md.index("| odd one out |") and "Listener" not in md.split("\n")[4]
-
-
-def test_kept_pauses_leaves_out_a_pause_the_edit_touched():
-    words = [{"text": w, "start": s, "end": s + 0.3} for w, s in (("one", 1.0), ("two", 2.0), ("three", 5.0), ("four", 6.0))]
-    edl = [{"raw_in": 0.8, "raw_out": 2.5, "clean_in": 1.5, "clean_out": 3.2}, {"raw_in": 4.8, "raw_out": 6.5, "clean_in": 3.9, "clean_out": 5.6}]
-    spans, gaps = kept_pauses(words, edl)
-    assert len(spans) == 4
-    assert [(round(a, 2), round(b, 2), round(c, 2)) for a, b, c in gaps] == [(1.3, 2.0, 2.0), (5.3, 6.0, 4.4)]   # not the pause across the cut
+    assert "Noise floor dB" in md and "Cut %" not in md and "Room" not in md and "Breaths" not in md
