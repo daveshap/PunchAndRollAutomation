@@ -42,6 +42,8 @@ How Claude reads them (the lengths come from his finished recordings, pieces 12 
 - **Titles, subtitles and scene breaks keep a longer pause.** Write a pause in after a title, and between a title and its subtitle when he ran them together. Give a scene or paragraph break about a second.
 - **A pause that he plainly meant as a beat stays,** such as one before a punchline or before a number he is landing.
 
+`punchroll markcheck markup/ch01.md` sets a mark-up beside its transcript and lists what is left to judge: short sounds still in, pauses of 0.12 s or more inside a sentence, and kept gaps over 1.6 s. A pause it lists is not always wrong, because the recognizer often leaves out a comma that the script has.
+
 ## Rendering
 
 `cut.py` builds a timeline from retained source spans and selected pauses. Unchanged adjacent source spans are joined into one continuous span. Every positive sample range is retained, including short sounds.
