@@ -24,7 +24,7 @@ python -m pip install torch torchaudio --index-url https://download.pytorch.org/
 ## Edit a recording
 
 1. **Transcribe.** `python -m punchroll transcript raw/ch01.wav` writes `markup/ch01.transcript.md` with words, timestamps, pauses and nonword sounds.
-2. **Read and mark the whole transcript.** Claude saves the edit as `markup/ch01.md`. It selects takes in context, preserves intended wording and delivery, removes unwanted material, and sets pauses to suit the passage.
+2. **Read and mark the whole transcript.** Claude saves the edit as `markup/ch01.md`. It selects takes in context, preserves intended wording and delivery, removes unwanted material, and sets pauses to suit the passage. Every pause is read, and a hesitation inside a sentence is closed ([docs/how-it-works.md](docs/how-it-works.md), "Pauses").
 3. **Render and master.** Run the command below to write the WAV, MP3, Markdown report and JSON edit map.
 4. **Check the finished audio.** Read it back against the mark-up, trace the clicks it still has, look for anything cut that was never said again, inspect the joins and quality measurements, and revise the edit where needed.
 
