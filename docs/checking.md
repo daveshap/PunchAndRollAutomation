@@ -84,6 +84,18 @@ What the reader actually said on each finished recording, written out cleanly: t
 
 To tell a mishearing from a rewording: names and homophones are the recognizer's; a changed word that the recognizer hears the same way in the raw recording and in the finished file is the reader's. `_fixes` in the same file mends capitals and commas where the reader's wording joins the written text. Punctuation is plain: a colon, semicolon, dash or bracket that the reader read through becomes a comma or a full stop.
 
+### What the reader changed
+
+`said changes` sets each sentence of the text the reader was given beside his finished transcript and lists every sentence he changed: the written one with the words he didn't say struck, the said one with his own words in bold, and a count per recording. With `--into NOTES.md` it rewrites only what lies between the file's `<!-- counts:start -->` and `<!-- counts:end -->` markers and after `<!-- log:start -->`. An entry's `written` (with `written_from` and `written_to`) names the text he was given when the reference is a copy made from his reading, and `heading` is its heading in the log. Because what was said is the finished transcript, a misspelled name or a spelled-out number is never a change; a slip of the tongue is, so read each one.
+
+This is the evidence for writing a script he won't have to fix. With it, read:
+
+- the mark-ups of the raw recordings, for the sentences that took several tries and what he said about the text between takes;
+- his own edits in the script he read from, found by setting that file beside the text he was given: they are his writing, and they outrank everything else;
+- for a rewrite of a script, the old text, the rewrite and the finished transcript side by side: count the rewrite's edits that he read as written, put back, or changed further. That tests the rules the rewrite followed. The surface rules can all pass while the writing still fails him underneath them.
+
+Sort every change into a pattern, with all its examples, and write the rules from them. The reader's own words, quoted with their date, outrank the patterns.
+
 ## Breaths, pauses and noise
 
 Preserve natural breathing and intentional delivery. Reduce or remove distracting gasps, clicks and other noises as the passage requires, keeping whole breaths and natural transitions. [Narrators Roadmap](https://www.narratorsroadmap.com/should-i-remove-breaths-from-my-audiobook/) describes preserving ordinary breaths as standard audiobook practice.

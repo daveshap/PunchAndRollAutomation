@@ -76,3 +76,48 @@ def test_a_decision_follows_its_difference_when_the_numbers_move(project):
     renumbered = {str(100 + k): {"sig": s, "use": u} for k, (s, u) in enumerate(sig_to_use.items())}
     path.write_text(json.dumps(renumbered), encoding="utf-8")
     assert said.draft([toml], log=lambda *a: None) == 0
+
+
+GIVEN = """# Two Pipes
+
+## A worked example
+
+So let's stress-test the household. Rent doesn't fall. The car payment doesn't fall. Groceries don't fall.
+
+Their skill was real. So is yours. A typical home uses $1,200 a year.
+"""
+
+SAID = ("So let's stress-test that household. Rent doesn't fall, the car payment doesn't fall, and groceries "
+        "don't fall.\n\nTheir skill was real, and so is yours. A typical home uses $1,200 a year.")
+
+
+def test_changes_lists_each_sentence_he_changed_with_his_words_marked(tmp_path):
+    (tmp_path / "given.md").write_text(GIVEN, encoding="utf-8")
+    (tmp_path / "reference.md").write_text(GIVEN, encoding="utf-8")
+    (tmp_path / "edited").mkdir()
+    (tmp_path / "edited/piece 03.mp3").write_bytes(b"finished")
+    (tmp_path / "transcripts").mkdir()
+    (tmp_path / "transcripts/piece 03.md").write_text(
+        f"# Two Pipes\n\nWhat David said on the finished recording \"piece 03\" (0:30).\n\n{SAID}\n", encoding="utf-8")
+    (tmp_path / "book.toml").write_text(
+        'out = "edited"\n[[chapter]]\nname = "piece 03"\nscript = "reference.md"\nwritten = "given.md"\n'
+        "heading = 'Piece 3, \"Two Pipes\" (8 Oct)'\n", encoding="utf-8")
+    notes = tmp_path / "notes.md"
+    notes.write_text("# Notes\n\n<!-- counts:start -->\nold\n<!-- counts:end -->\n\nWritten by hand.\n\n"
+                     "<!-- log:start -->\nold log\n", encoding="utf-8")
+    assert said.changes([tmp_path / "book.toml"], notes, log=lambda *a: None) == 3
+    text = notes.read_text(encoding="utf-8")
+    assert "| Piece 3, \"Two Pipes\" (8 Oct) | 7 | 3 | 43 % |" in text      # the unread headings aren't counted
+    assert "Written by hand." in text and "old log" not in text and "\nold\n" not in text
+    assert "1. W: So let's stress-test ~~the~~ household.\n   S: So let's stress-test **that** household." in text
+    assert "S: Rent doesn't fall, the car payment doesn't fall, **and** groceries don't fall." in text
+    assert "W: Their skill was real. So is yours.\n   S: Their skill was real, **and** so is yours." in text
+    assert "1,200" not in text.split("<!-- log:start -->")[1]                 # read as written: not a change
+
+
+def test_marks_keep_punctuation_outside():
+    assert said.marked("I braced for an uphill fight.", "I braced for an uphill battle.") == \
+        ("I braced for an uphill ~~fight~~.", "I braced for an uphill **battle**.")
+    assert said.marked("lost their livelihoods to machines—master weavers, travel agents.",
+                       "lost their livelihoods to machines, master weavers, and travel agents.")[1] == \
+        "lost their livelihoods to machines, master weavers, **and** travel agents."

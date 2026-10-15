@@ -27,6 +27,21 @@ Save the marked copy separately from the generated transcript. Repeated transcri
 
 Leave the original word and sound tokens in order. The parser verifies their correspondence with the source. Striking a sound removes it; leaving it unstruck preserves it. Claude sets pause timing for the sentence, title, transition or scene.
 
+### Pauses
+
+Claude reads every pause in the transcript and sets it, including the pauses inside a sentence, and not only the ones beside a cut. The reader's words:
+
+- 13 Oct 2026: "we need the longer pauses preserved for things like titles, subtitles, scene breaks, etc (I know there is some variance in this, I've heard audiobooks where there is zero pause, and some where there is pretty significant pause) but as they say measure twice cut once it's easier to cut out a pause later I think."
+- 15 Oct 2026: "I have some intra-sentence pauses (i.e. pauses that are slightly too long within the sentence, between words as I hesitated). so like... basically as part of your markup are you ALSO looking at pause optimization? if not, can you add that as a default practice?"
+
+How Claude reads them (the lengths come from his finished recordings, pieces 12 to 16 of the voice-clone script; they guide the reading, and nothing in the code applies them):
+
+- **A pause between words that belong together is a hesitation.** Examples are a subject and its verb ("Every company {0.15} is going"), a number and its unit ("more than 30,000 {0.16} per day"), and the words inside one phrase ("every single {0.26} day"). Close it to about 0.05 s so the words join as they do in his fluent reading. A shortened pause keeps the quiet at both of its ends, so no sound is clipped.
+- **A pause at a comma or between two clauses stays as he made it, unless it runs long.** His comma pauses have a median of 0.25 s, and four in five fall between 0.16 and 0.42 s. Bring a longer one down to about 0.3 s.
+- **A pause between sentences stays, unless it holds a slip, a retake or a click.** His median is 0.62 s, and four in five fall between 0.30 and 1.43 s, with scene breaks included in that count.
+- **Titles, subtitles and scene breaks keep a longer pause.** Write a pause in after a title, and between a title and its subtitle when he ran them together. Give a scene or paragraph break about a second.
+- **A pause that he plainly meant as a beat stays,** such as one before a punchline or before a number he is landing.
+
 ## Rendering
 
 `cut.py` builds a timeline from retained source spans and selected pauses. Unchanged adjacent source spans are joined into one continuous span. Every positive sample range is retained, including short sounds.

@@ -5,6 +5,10 @@
         reference text, numbered; and <said>/NAME.decisions.json, with the ones that are only spelling decided.
     punchroll said build project.toml [more.toml ...]
         writes <transcripts>/NAME.md for each recording, and <transcripts>/All recordings.md for all of them.
+    punchroll said changes project.toml [more.toml ...] [--into NOTES.md]
+        every sentence the reader changed from the text he was given, set beside what he said, with the
+        changed words marked (~~cut~~ in the written sentence, **added** in the said one), and a count per
+        recording. With --into, both go into NOTES.md between its markers and nothing else in it changes.
 
 The words come from the speech recognizer's transcript of the FINISHED file (the MP3 if there is one); it is
 transcribed if it hasn't been. The reference text (the entry's `script` with `from`/`to` or `lines`, as for
@@ -25,7 +29,11 @@ transcript has a comma or a full stop.
 
 Project keys: `transcripts` (folder for the transcripts, default "transcripts"), `said` (folder for the review
 and decision files, default "said"), `speaker` (the reader's name, for the headings). Entry keys: `title`
-(default: the name) and `recorded` (when, as text).
+(default: the name) and `recorded` (when, as text). For `changes`: `written` with `written_from` and
+`written_to`, the text the reader was given when it isn't the reference text (a whole file when they are
+left out); and `heading`, the recording's heading in the log (default: the title and when it was recorded).
+`changes` reads the transcripts that `build` wrote: what was said is the finished transcript, never the
+recognizer's raw words.
 """
 from __future__ import annotations
 
@@ -38,7 +46,7 @@ from pathlib import Path
 
 from .asr import cached_words, transcribe
 from .models import transcripts_dir
-from .text import read_blocks, select_section, toks
+from .text import load_script, read_blocks, select_section, toks
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -59,6 +67,10 @@ class Entry:
     work: Path
     out: Path
     speaker: str | None
+    written: Path | None = None
+    written_start: str | None = None
+    written_end: str | None = None
+    heading: str | None = None
 
 
 def entries(project, only: str | None = None) -> list[Entry]:
@@ -80,7 +92,9 @@ def entries(project, only: str | None = None) -> list[Entry]:
             raise FileNotFoundError(f"[{name}] has no finished file in {out}")
         found.append(Entry(name, ch.get("title") or name, ch.get("recorded", ""), base / script, ch.get("from"),
                            ch.get("to"), ch.get("lines"), finished, base / proj.get("said", "said"),
-                           base / proj.get("transcripts", "transcripts"), proj.get("speaker")))
+                           base / proj.get("transcripts", "transcripts"), proj.get("speaker"),
+                           base / ch["written"] if ch.get("written") else None, ch.get("written_from"),
+                           ch.get("written_to"), ch.get("heading")))
     return found
 
 
@@ -305,3 +319,161 @@ def build(projects, only=None, rec=None, log=print) -> list[Path]:
         written.append(dest)
         log(f"All recordings.md: {total:,} words")
     return written
+
+
+COUNTS = ("<!-- counts:start -->", "<!-- counts:end -->")
+LOG = "<!-- log:start -->"
+
+
+def given(e: Entry):
+    """The sentences of the text the reader was given: the entry's `written` text, or its reference."""
+    if e.written:
+        return load_script(e.written, e.written_start, e.written_end)
+    return load_script(e.reference, e.start, e.end, e.lines)
+
+
+def finished_text(e: Entry) -> str:
+    """The body of the recording's finished transcript."""
+    path = e.out / f"{e.name}.md"
+    if not path.is_file():
+        raise FileNotFoundError(f"[{e.name}] has no finished transcript yet: run `punchroll said build`")
+    return path.read_text(encoding="utf-8").split("\n\n", 2)[2]
+
+
+def _ends(word: str) -> bool:
+    """The word ends a sentence: a full stop, question or exclamation mark, before any closing quote."""
+    return word.rstrip("\"”’')")[-1:] in (".", "?", "!")
+
+
+def changed(lines, said_words: list[str]):
+    """The sentences the reader changed, as (written, said); how many sentences were read; the body sentences
+    left unread. Sentences he ran together are shown together; a heading he didn't read is left out."""
+    S = [(t, i) for i, w in enumerate(said_words) for t in toks(w)]
+
+    def opcodes(lines):
+        W = [(t, k) for k, ln in enumerate(lines) for t in ln.tokens]
+        return W, difflib.SequenceMatcher(a=[t for t, _ in W], b=[t for t, _ in S], autojunk=False).get_opcodes()
+
+    W, ops = opcodes(lines)                                # a heading counts as read when most of its words were
+    hit = [0] * len(lines)
+    for op, i1, i2, _, _ in ops:
+        if op == "equal":
+            for i in range(i1, i2):
+                hit[W[i][1]] += 1
+    lines = [ln for k, ln in enumerate(lines) if ln.kind != "heading" or 2 * hit[k] >= len(ln.tokens)]
+    W, ops = opcodes(lines)
+    line_of, touched, unread = {}, set(), set(range(len(lines)))
+    for op, i1, i2, j1, j2 in ops:
+        if op == "equal":
+            for d in range(i2 - i1):
+                line_of.setdefault(S[j1 + d][1], W[i1 + d][1])
+                unread.discard(W[i1 + d][1])
+            continue
+        first = S[j1][1] if j1 < len(S) else len(said_words)
+        if op == "insert":
+            k = W[i1 - 1][1] if i1 > 0 else 0
+            if (i1 < len(W) and (i1 == 0 or W[i1][1] != W[i1 - 1][1]) and first > 0
+                    and _ends(said_words[first - 1])):
+                k = W[i1][1]                               # said after a full stop: it opens the next sentence
+        else:
+            k = W[i1][1]
+            if j2 > j1:
+                unread.difference_update(q for _, q in W[i1:i2])
+        for _, i in S[j1:j2]:
+            line_of.setdefault(i, k)
+        if "".join(t for t, _ in W[i1:i2]) != "".join(t for t, _ in S[j1:j2]):
+            touched.add(k)
+    said = {}
+    for i, w in enumerate(said_words):
+        if i in line_of:
+            said.setdefault(line_of[i], []).append(w)
+
+    def runs_on(k):                                        # he ran sentence k into the next one
+        return bool(said.get(k)) and not _ends(said[k][-1]) and k + 1 < len(lines) and k + 1 not in unread
+
+    found, used = [], set()
+    for k in sorted(touched - unread):
+        if k in used:
+            continue
+        a = b = k
+        while a > 0 and a - 1 not in unread and a - 1 not in used and runs_on(a - 1):
+            a -= 1
+        while runs_on(b):
+            b += 1
+        used.update(range(a, b + 1))
+        w = " ".join(lines[g].text for g in range(a, b + 1))
+        s = " ".join(" ".join(said.get(g, [])) for g in range(a, b + 1))
+        if letters(w) != letters(s):                       # not just punctuation, capitals or a number's spelling
+            found.append((w, s[:1].upper() + s[1:]))
+    read = sum(1 for k in range(len(lines)) if k not in unread)
+    return found, read, [lines[k].text for k in sorted(unread) if lines[k].kind == "body"]
+
+
+def _wrap(words: list[str], mark: str) -> str:
+    """Words inside a mark, with the punctuation around them left outside it."""
+    s = " ".join(words)
+    lead = len(s) - len(s.lstrip("“\"'(‘"))
+    end = len(s.rstrip(".,;:?!”\"')’"))
+    return s[:lead] + mark + s[lead:end] + mark + s[end:] if end > lead else s
+
+
+def marked(written: str, spoken: str) -> tuple[str, str]:
+    """The written sentence with the words he didn't say struck (~~), the said one with his own words in bold."""
+    a = re.sub(r"\s*([—–])\s*", r" \1 ", written).split()
+    b = spoken.split()
+    ia = [i for i, x in enumerate(a) if letters(x)]
+    ib = [j for j, x in enumerate(b) if letters(x)]
+    sm = difflib.SequenceMatcher(a=[letters(a[i]) for i in ia], b=[letters(b[j]) for j in ib], autojunk=False)
+    same_a, same_b = set(), set()
+    for blk in sm.get_matching_blocks():
+        same_a.update(ia[blk.a + o] for o in range(blk.size))
+        same_b.update(ib[blk.b + o] for o in range(blk.size))
+
+    def runs(words, same, mark):
+        out, run = [], []
+        for i, x in enumerate(words):
+            if i in same or not letters(x):
+                if run:
+                    out.append(_wrap(run, mark))
+                    run = []
+                out.append(x)
+            else:
+                run.append(x)
+        if run:
+            out.append(_wrap(run, mark))
+        return re.sub(r" ([—–]) ", r"\1", " ".join(out))
+
+    return runs(a, same_a, "~~"), runs(b, same_b, "**")
+
+
+def changes(projects, into=None, only=None, log=print) -> int:
+    """List every sentence the reader changed, recording by recording; return how many."""
+    if into and only:
+        raise ValueError("--into rewrites the whole log, so it takes every recording: leave out --only")
+    rows, parts, total, read = [], [], 0, 0
+    for e in (e for p in projects for e in entries(p, only)):
+        found, n_read, left = changed(given(e), finished_text(e).split())
+        total, read = total + len(found), read + n_read
+        head = e.heading or (f"{e.title} ({e.recorded})" if e.recorded else e.title)
+        rows.append(f"| {head} | {n_read} | {len(found)} | {100 * len(found) / max(n_read, 1):.0f} % |")
+        parts += [f"### {head}", "",
+                  f"{len(found)} of {n_read} sentences changed." + (" Left unread: " + " ".join(left) if left else ""), ""]
+        for n, (w, s) in enumerate(found, 1):
+            mw, ms = marked(w, s)
+            parts += [f"{n}. W: {mw}", f"   S: {ms}"]
+        parts.append("")
+    counts = "\n".join(["| Recording, in the order recorded | Sentences read | Changed | Share |", "|---|---|---|---|"]
+                       + rows + ["", f"{total} sentences changed out of {read:,} read."])
+    text_log = "\n".join(parts).rstrip() + "\n"
+    if not into:
+        log(counts + "\n\n" + text_log)
+        return total
+    path = Path(into)
+    text = path.read_text(encoding="utf-8")
+    if not all(m in text for m in (*COUNTS, LOG)):
+        raise ValueError(f"{path} needs the markers {COUNTS[0]}, {COUNTS[1]} and {LOG}")
+    head, rest = text.split(COUNTS[0], 1)
+    middle = rest.split(COUNTS[1], 1)[1].split(LOG, 1)[0]
+    path.write_text(f"{head}{COUNTS[0]}\n{counts}\n{COUNTS[1]}{middle}{LOG}\n\n{text_log}", encoding="utf-8", newline="\n")
+    log(f"{path.name}: {total} changed sentences out of {read:,} read")
+    return total
