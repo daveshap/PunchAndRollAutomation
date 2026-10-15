@@ -88,8 +88,11 @@ def readback_text(rows: list[dict], kept: int, heard: int) -> str:
     return "\n".join(lines)
 
 
-def trace_clicks(raw_path, fin_path, settings, within: float = 30.0, log=print) -> list[dict]:
-    """Each click the scorecard counts in the finished file (within `within` dB of its level), traced back."""
+def trace_clicks(raw_path, fin_path, settings, within: float = 30.0, log=print, pieces_out: list | None = None) -> list[dict]:
+    """Each click the scorecard counts in the finished file (within `within` dB of its level), traced back.
+
+    Each row names the recording's piece the click falls in (`piece`, an index into the recording's pieces); pass a
+    list as `pieces_out` to have those pieces added to it."""
     from .measure import clicks
     from .pipeline import measure
     x, sr = read_mono(fin_path)
@@ -97,6 +100,8 @@ def trace_clicks(raw_path, fin_path, settings, within: float = 30.0, log=print) 
     if not edl:
         raise ValueError(f"no edit map beside {fin_path}: trace_clicks needs the cut's .edit.json")
     _, _, _, pieces = measure(raw_path, settings, log=lambda *a: None)
+    if pieces_out is not None:
+        pieces_out.extend(pieces)
     out = []
     for t, level in clicks(x, sr):
         if level <= -within:
@@ -104,7 +109,7 @@ def trace_clicks(raw_path, fin_path, settings, within: float = 30.0, log=print) 
         seg = next((e for e in edl if e["clean_in"] - 1e-6 <= t <= e["clean_out"] + 1e-6), None)
         if seg is None:
             out.append({"at": t, "level": level, "raw": None, "where": "room tone added by the edit, or the head or tail",
-                        "context": ""})
+                        "context": "", "piece": None})
             continue
         r = seg["raw_in"] + (t - seg["clean_in"])
         k = next((i for i, p in enumerate(pieces) if p.a <= r <= p.b), None)
@@ -117,7 +122,7 @@ def trace_clicks(raw_path, fin_path, settings, within: float = 30.0, log=print) 
             hi += 1
         ctx = " ".join((f"*{_token(pieces[i])}*" if i == k else _token(pieces[i])) for i in range(lo, hi + 1))
         out.append({"at": t, "level": level, "raw": r, "where": "inside a word" if pieces[k].kind == "word" else
-                    ("inside a sound" if pieces[k].kind == "sound" else "inside a pause"), "context": ctx})
+                    ("inside a sound" if pieces[k].kind == "sound" else "inside a pause"), "context": ctx, "piece": k})
     return out
 
 

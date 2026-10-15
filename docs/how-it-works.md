@@ -13,7 +13,7 @@
 
 Claude reads the entire sequence and chooses the intended reading. Use surrounding sentences and the actual recording to distinguish retakes, deliberate repetition, ad-libs, breaths and unwanted sounds. A manuscript supplies context and comparison. The edit follows the intended spoken delivery.
 
-Save the marked copy separately from the generated transcript. Repeated transcription preserves existing files and writes a numbered copy.
+Save the marked copy separately from the generated transcript. Repeated transcription preserves existing files and writes a numbered copy. The whole method in one place, as it was given to helpers marking up recordings, is [marking-up.md](marking-up.md).
 
 ## Markup
 
@@ -41,6 +41,8 @@ How Claude reads them (the lengths come from his finished recordings, pieces 12 
 - **A pause between sentences stays, unless it holds a slip, a retake or a click.** His median is 0.62 s, and four in five fall between 0.30 and 1.43 s, with scene breaks included in that count.
 - **Titles, subtitles and scene breaks keep a longer pause.** Write a pause in after a title, and between a title and its subtitle when he ran them together. Give a scene or paragraph break about a second.
 - **A pause that he plainly meant as a beat stays,** such as one before a punchline or before a number he is landing.
+
+`punchroll markcheck markup/ch01.md` sets a mark-up beside its transcript and lists what is left to judge: short sounds still in, pauses of 0.12 s or more inside a sentence, and kept gaps over 1.6 s. A pause it lists is not always wrong, because the recognizer often leaves out a comma that the script has.
 
 ## Rendering
 

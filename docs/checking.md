@@ -30,6 +30,8 @@ When a manuscript is available, `verify` lists the full sentence and location of
 - A click inside a kept breath goes with the breath.
 - A click inside a word's span (a lip smack at the end of "them") can't be cut without cutting into the word.
 
+`declick` makes these strikes in the mark-up: `punchroll declick markup/ch01.md --raw raw/ch01.wav --finished edited/ch01.wav --write`. Without `--raw` and `--finished` it rewrites only what the mark-up itself shows: a click left in, or a click struck alone with its pauses kept. Pauses written in by hand are never struck. Then cut again and run `clicks` again: taking out one click can let the detector count another that was below its threshold beside it. Repeat until no click is left in a pause or a sound, which took one to three rounds on the recordings of 15 Oct 2026, and read the whole list each time, not only its end.
+
 ### Lost words
 
 `lost` sets the recognizer's words for the recording beside those for the finished file. A retake repeats what it replaces, so the cut words come back just after the cut. Cut words that never come back are an aside, a slip or a false start, or something the reader said that the edit lost. Read each one; the reader's last take and every rewording are the text.

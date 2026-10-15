@@ -10,6 +10,8 @@
   punchroll scorecard project.toml     score every finished recording side by side, on the finished files alone
   punchroll readback EDITED --markup M check a finished file holds every word its mark-up kept, once and in order
   punchroll clicks RAW EDITED          trace each click counted in a finished file back to the mark-up
+  punchroll declick MARKUP             strike clicks in a mark-up by the method; with --raw and --finished, the traced ones too
+  punchroll markcheck MARKUP           the mark-up still matches its transcript; short sounds, pauses and gaps left to judge
   punchroll lost RAW EDITED            words cut from a recording that are never said again
   punchroll said draft|build P.toml    the finished transcripts: what the reader said on each recording
   punchroll said changes P.toml        every sentence the reader changed from the text he was given
@@ -97,6 +99,19 @@ def main(argv=None) -> int:
     p.add_argument("finished", help="the finished WAV, with its .edit.json beside it")
     p.add_argument("--config", help="the settings the recording was cut with")
     p.add_argument("--within", type=float, default=30.0, help="clicks within this many dB of the file's level (default: 30)")
+
+    p = sub.add_parser("declick", help="strike the clicks in a mark-up as docs/checking.md says, and those traced in its finished file")
+    p.add_argument("markup", help="the marked-up transcript")
+    p.add_argument("--transcript", help="its transcript (default: the mark-up's name with .transcript.md)")
+    p.add_argument("--raw", help="the recording; with --finished, also strike the clicks traced to a kept pause or breath")
+    p.add_argument("--finished", help="the finished WAV cut from this mark-up, with its .edit.json beside it")
+    p.add_argument("--config", help="the settings the recording was cut with")
+    p.add_argument("--within", type=float, default=30.0, help="clicks within this many dB of the file's level (default: 30)")
+    p.add_argument("--write", action="store_true", help="write the changes into the mark-up (default: only list them)")
+
+    p = sub.add_parser("markcheck", help="check a mark-up against its transcript, and list what is left to judge")
+    p.add_argument("markup", help="the marked-up transcript")
+    p.add_argument("--transcript", help="its transcript (default: the mark-up's name with .transcript.md)")
 
     p = sub.add_parser("lost", help="words cut from a recording that are never said again")
     p.add_argument("raw", help="the recording")
@@ -246,6 +261,33 @@ def _run(a) -> int:
             print(checks.clicks_text(checks.trace_clicks(a.raw, a.finished, settings, a.within)))
         else:
             print(checks.lost_text(checks.lost_words(checks.heard_words(a.raw, rec), checks.heard_words(a.finished, rec))))
+        return 0
+
+    if a.cmd in ("declick", "markcheck"):
+        from . import markfix
+        markup_path = Path(a.markup)
+        transcript_path = Path(a.transcript) if a.transcript else markup_path.with_name(markup_path.stem + ".transcript.md")
+        for path in (markup_path, transcript_path):
+            if not path.is_file():
+                raise FileNotFoundError(f"not found: {path}")
+        m = markfix.MarkedUp(markup_path.read_text(encoding="utf-8").replace("\r\n", "\n"),
+                             transcript_path.read_text(encoding="utf-8").replace("\r\n", "\n"))
+        if a.cmd == "markcheck":
+            print(markfix.check_text(markfix.check(m)))
+            return 0
+        changes = markfix.strike_short_sounds(m)
+        if a.raw or a.finished:
+            if not (a.raw and a.finished):
+                raise ValueError("--raw and --finished go together")
+            from . import checks
+            pieces: list = []
+            rows = checks.trace_clicks(a.raw, a.finished, load_settings(a.config), a.within, pieces_out=pieces)
+            changes += markfix.strike_traced(m, rows, pieces)
+        for c in changes:
+            print(c)
+        print(f"{len(changes)} change(s)" + (", written" if a.write and changes else ""))
+        if a.write and changes:
+            markup_path.write_text(m.render(), encoding="utf-8", newline="\n")
         return 0
 
     if a.cmd == "said":
