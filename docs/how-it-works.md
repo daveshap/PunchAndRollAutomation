@@ -13,7 +13,7 @@
 
 Claude reads the entire sequence and chooses the intended reading. Use surrounding sentences and the actual recording to distinguish retakes, deliberate repetition, ad-libs, breaths and unwanted sounds. A manuscript supplies context and comparison. The edit follows the intended spoken delivery.
 
-Save the marked copy separately from the generated transcript. Repeated transcription preserves existing files and writes a numbered copy.
+Save the marked copy separately from the generated transcript. Repeated transcription preserves existing files and writes a numbered copy. The whole method in one place, as it was given to helpers marking up recordings, is [marking-up.md](marking-up.md).
 
 ## Markup
 
