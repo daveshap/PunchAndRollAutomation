@@ -7,7 +7,8 @@
   punchroll verify EDITED --script S   proof a finished file against its manuscript and ACX; writes no audio
   punchroll batch project.toml --proof   the same for every finished file in a project
   punchroll standards EDITED...        check finished files against ACX and ElevenLabs
-  punchroll scorecard project.toml     score every finished recording side by side, on the finished files alone
+  punchroll scorecard P.toml...        score every finished recording side by side, on the finished files alone;
+                                       best first by fire (the delivery's lift, movement and brightness)
   punchroll readback EDITED --markup M check a finished file holds every word its mark-up kept, once and in order
   punchroll clicks RAW EDITED          trace each click counted in a finished file back to the mark-up
   punchroll declick MARKUP             strike clicks in a mark-up by the method; with --raw and --finished, the traced ones too
@@ -83,11 +84,16 @@ def main(argv=None) -> int:
     p.add_argument("audio", nargs="+", help="finished files (MP3 or WAV); wildcards are expanded")
     p.add_argument("-o", "--out", help="also write the report to this Markdown file")
 
-    p = sub.add_parser("scorecard", help="score every finished recording of a project side by side")
-    p.add_argument("project")
-    p.add_argument("-o", "--out", help="Markdown file to write (default: scorecard.md in the project's output folder)")
+    p = sub.add_parser("scorecard", help="score every finished recording of one or more projects side by side")
+    p.add_argument("project", nargs="+", help="project files; their recordings are scored together")
+    p.add_argument("-o", "--out",
+                   help="Markdown file to write (default: scorecard.md in the first project's output folder)")
     p.add_argument("--listener", action="store_true",
                    help='add a trained listener\'s estimate of each file (needs pip install -e ".[listen]")')
+    p.add_argument("--fire-reference",
+                   help="the fire scale file (default: fire-reference.json beside the first project file)")
+    p.add_argument("--calibrate-fire", action="store_true",
+                   help="set the fire scale from these recordings and save it to the fire scale file")
 
     p = sub.add_parser("readback", help="check a finished file holds every word its mark-up kept, once and in order")
     p.add_argument("finished", help="the finished MP3 or WAV; its .edit.json beside it gives the joins")
@@ -233,12 +239,12 @@ def _run(a) -> int:
 
     if a.cmd == "scorecard":
         from .scorecard import scorecard, scorecard_markdown
-        rows = scorecard(a.project, listener=a.listener)
+        rows = scorecard(a.project, listener=a.listener, reference=a.fire_reference, calibrate_fire=a.calibrate_fire)
         if not rows:
-            raise ValueError("no recording of this project has a finished WAV and an edit list yet")
+            raise ValueError("no recording of these projects has a finished WAV yet")
         md = scorecard_markdown(rows)
-        proj = _toml(a.project)
-        dest = Path(a.out) if a.out else Path(a.project).parent / proj.get("out", "edited") / "scorecard.md"
+        proj = _toml(a.project[0])
+        dest = Path(a.out) if a.out else Path(a.project[0]).parent / proj.get("out", "edited") / "scorecard.md"
         dest.write_text(md, encoding="utf-8")
         print(md)
         print(f"Scorecard: {dest}")

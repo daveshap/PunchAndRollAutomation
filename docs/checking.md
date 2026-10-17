@@ -55,18 +55,40 @@ The `standards` report also gives the longest pause, click rate, tonal distance 
 
 Score the finished product, never the raw recording. David, 14 Oct 2026: "you should not be scoring the raw file" and "you should be scoring the final product". How a take went in the room (how much was cut, how noisy the raw recording was, what processing did to it) doesn't count; what the finished file is like does.
 
-`scorecard` reads each finished WAV and nothing from the source recording.
+`scorecard` reads each finished WAV and nothing from the source recording. Give it every project file whose recordings belong in one comparison (`scorecard labor-zero.toml voice-clone.toml`). It sorts the recordings by fire, highest first.
 
 | Column | Measurement |
 |---|---|
+| Recorded | The date in the chapter's entry in the project file. |
+| Fire | Lift, movement and brightness on one scale: 50 is the reference set's average, every 10 a standard deviation. |
+| Lift st | Median pitch over the whole file, in semitones above the reference set's average. |
+| Movement st/s | How fast the pitch moves along each voiced stretch, in semitones per second. |
+| Brightness Hz | Centre of mass of the voice's spectrum up to 8 kHz, on the louder half of the voiced frames. |
+| Hottest minutes | The three minutes of the file with the most fire: where each starts, and its fire. |
+| Order | Average rank on clicks, tonal distance and available listener scores (production quality). |
 | Clicks/min | Isolated short spikes in pauses, in the 1–10 kHz band. |
 | Noise floor dB | The finished file's noise floor, as ACX measures it. |
 | Tone dB | Octave-band distance from the set's median balance. |
-| Pitch Hz | Median voice pitch over the middle 100 seconds. |
+| Pitch Hz | Median voice pitch over the whole file. |
 | Words/min | Words in the finished file's transcript per minute, when it has been transcribed. |
-| Order | Average rank on clicks, tonal distance and available listener scores. |
 
 Compare recordings made and processed under similar conditions. Use the individual measurements to select a coherent set and identify passages to improve.
+
+### Fire
+
+David, 17 Oct 2026: "I want to add this brightness/fire as a standard measurement to all files as this, I think, now that we've solved the basic production quality, will be the prime determinant of the files that get used for the PVC" and "put a number on it, and include it in the standard report". He had heard it before it was measured. Three recordings made back to back on 15 Oct 2026 (the Scion, essential demand and communism scripts) have "the pop and fire that we want to focus on". He also asked for the three parts to be shown beside the score, "so I can see my progress".
+
+How it was found, on the 28 finished recordings of 2 to 16 Oct 2026 (Claude's account). Each candidate was compared minute by minute: the three fire recordings against the rest, against the session closest to them in setup (16 Oct, the next morning), and against the other late-morning sessions.
+
+- **Timing and phrasing don't separate them:** words per phrase, articulation rate, pauses, pitch resets and declination.
+- **Voice-source measures don't either:** glottal flow by inverse filtering (NAQ, QOQ), H1–H2, cepstral peak prominence and harmonics-to-noise ratio. They track the low, slightly creaky morning voice instead.
+- **Pitch height and pitch movement** track how warmed up the voice is, for which David's own guess was the time of day ("after I've had my coffee, biscuit, and some social engagement"). They were lowest in the 7 a.m. sessions of 14 and 16 Oct, and as high in the late-morning sessions as on 15 Oct. The 7 a.m. session of 8 Oct was nearly as animated, so the clock alone is not the cause.
+- **Brightness** was the one measure on which 15 Oct stood above every other session, the next morning's included.
+
+Fire combines the three parts with equal weight, so it rewards a warmed-up, animated, projected read. It was not fitted to the three recordings. Two cautions:
+
+- **Brightness moves with microphone placement as well as with the voice.** Compare sessions recorded with the microphone in its usual place, and read the three parts, not only the total.
+- **The scale is the speaker's own.** `--calibrate-fire` sets it from the recordings given (`fire-reference.json`, beside the first project file). Without the file, the score is relative to whatever set is scored and moves as recordings are added. Recalibrate only on purpose: every number in the earlier reports is on the old scale.
 
 ### Trained listener
 

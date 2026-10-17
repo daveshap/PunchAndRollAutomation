@@ -60,12 +60,14 @@ List recordings in [a project TOML](examples/project.toml), then run:
 
 ```bash
 python -m punchroll batch project.toml
-python -m punchroll scorecard project.toml --listener
+python -m punchroll scorecard project.toml other.toml --listener
 ```
 
 For entries awaiting an edit, `batch` gives Claude the transcript and expected markup path. After Claude saves each markup, rerun it to render and master. Complete outputs are reused until their inputs change. `--only` selects recordings; `--force` rebuilds them. An entry can name its own settings file with `config`, for example a recording made with the microphone's high-pass filter off (`mic_filter_hz`).
 
 Score the finished product, never the raw recording. David, 14 Oct 2026: "you should not be scoring the raw file" and "you should be scoring the final product". The scorecard reads only the finished files; how a take went in the room doesn't count.
+
+The scorecard ranks the recordings by **fire**: the lift, movement and brightness of the delivery, on a fixed scale where 50 is the reader's average. David, 17 Oct 2026: "now that we've solved the basic production quality, [fire] will be the prime determinant of the files that get used for the PVC". The first run with `--calibrate-fire` sets the scale from the recordings so far (`fire-reference.json` beside the first project file); later runs read it, so new recordings land on the same scale. See [the fire score](docs/checking.md#fire).
 
 ## What was said
 
@@ -97,7 +99,7 @@ This writes a float WAV and a source/output map. Use the assembled recording in 
 | `verify FILE --script book.docx` | Manuscript differences, pickups, small differences, missing lines, added material and ACX measurements. |
 | `batch project.toml --proof` | Manuscript proof reports for finished project audio. |
 | `standards FILES` | ACX and ElevenLabs measurements, format, pauses, mouth-click rate, tonal consistency and total duration. |
-| `scorecard project.toml --listener` | The finished files side by side: clicks, noise floor, tone, pitch, pace and trained-listener estimates. |
+| `scorecard P.toml... --listener` | The finished files side by side, best first by fire (lift, movement, brightness, hottest minutes), with clicks, noise floor, tone, pitch, pace and trained-listener estimates. |
 | `readback EDITED --markup M` | Every word the mark-up kept, checked against the finished file: missing, doubled or returned words, with the nearest join. |
 | `clicks RAW EDITED` | Each click counted in the finished file, traced to the recording and its place in the mark-up. |
 | `lost RAW EDITED` | Stretches cut from the recording that are never said again: asides, slips, or something lost. |
