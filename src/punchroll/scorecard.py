@@ -15,6 +15,9 @@ Columns:
   range        how far the pitch swings: 10th to 90th percentile while voiced, semitones
   brightness   centre of mass of the voice's spectrum up to 8 kHz, Hz
   hottest      the minutes of the file with the most fire, with their fire
+  enunciation  with --enunciation: everyday words per hundred that the speech recognizer doubts; fewer is clearer
+               (enunciation.py). David, 17 Oct 2026: "for most listeners, particularly for audiobooks, that is the
+               entire job".
   clicks       mouth clicks alone in pauses, per minute, counting those within 30 dB of the file's level
   noise floor  the finished file's noise floor in dB, as ACX measures it
   tone         how far the file's balance by octave is from the middle of the set, in dB; smaller is more alike
@@ -124,14 +127,26 @@ def _word_count(fin_path: Path) -> int | None:
 
 
 def scorecard(project, listener: bool = False, log=print, reference: Path | None = None,
-              calibrate_fire: bool = False) -> list[dict]:
+              calibrate_fire: bool = False, enunciation: bool = False, enunciation_reference: Path | None = None,
+              calibrate_enunciation: bool = False) -> list[dict]:
     """Score every chapter, of one project file or several, that has a finished WAV in its output folder.
 
     reference: the fire scale file (default: fire-reference.json beside the first project file).
     calibrate_fire: set the fire scale from these recordings and save it there.
+    enunciation: also count the everyday words that the speech recognizer doubts (about 30 s a file the first
+    time; cached after that). Its word list is enunciation-reference.json beside the first project file, made from
+    these recordings when there is none yet, or again with calibrate_enunciation.
     """
     projects = [Path(p) for p in ([project] if isinstance(project, (str, Path)) else project)]
     rows = []
+    holder: dict = {}
+
+    def recognizer():
+        if "r" not in holder:
+            from .asr import Recognizer
+            from .config import auto_threads
+            holder["r"] = Recognizer(auto_threads(0), log)
+        return holder["r"]
     for proj_path in projects:
         proj = tomllib.loads(proj_path.read_text(encoding="utf-8"))
         out = proj_path.parent / proj.get("out", "edited")
@@ -144,6 +159,9 @@ def scorecard(project, listener: bool = False, log=print, reference: Path | None
             fin, sr = read_mono(fin_path)
             row = score_file(fin, sr, _word_count(fin_path), listener)
             row["name"], row["recorded"] = name, ch.get("recorded")
+            if enunciation:
+                from .enunciation import confidences
+                row["heard"] = confidences(fin_path, fin, sr, recognizer, transcripts_dir())
             rows.append(row)
             fm = row["fire_measures"]
             log(f"{name}: clicks {row['clicks']:.1f}/min, noise floor {row['noise_floor']:.1f} dB"
@@ -157,6 +175,13 @@ def scorecard(project, listener: bool = False, log=print, reference: Path | None
         add_fire(rows, ref)
         for r in rows:
             r["fire_note"] = note
+    if enunciation and rows:
+        from . import enunciation as en
+        path = Path(enunciation_reference) if enunciation_reference else projects[0].parent / en.REFERENCE_NAME
+        words, note = en.reference([r["heard"] for r in rows], path, calibrate_enunciation, log)
+        for r in rows:
+            r["enunciation"], r["enunciation_words"] = en.doubted(r["heard"], words)
+            r["enunciation_note"] = note
     return rows
 
 
@@ -169,6 +194,7 @@ def scorecard_markdown(rows: list[dict]) -> str:
     heard = bool(rows) and all(r["pesq"] is not None for r in rows)
     fired = bool(rows) and all("fire" in r for r in rows)
     dated = any(r.get("recorded") for r in rows)
+    clear = bool(rows) and all("enunciation" in r for r in rows)
     quality = "clicks, tone" + (" and listener" if heard else "")
     if fired:
         lead = (f"Best first by Fire: the lift, movement, range and brightness of the delivery (50 is the reference average, "
@@ -182,8 +208,11 @@ def scorecard_markdown(rows: list[dict]) -> str:
           + lead, ""]
     if fired:
         md += [rows[0]["fire_note"], ""]
+    if clear:
+        md += [rows[0]["enunciation_note"], ""]
     head = "| Recording |" + (" Recorded |" if dated else "") + " Min |"
     head += " Fire | Lift st | Movement st/s | Range st | Brightness Hz | Hottest minutes |" if fired else ""
+    head += " Enunciation /100 |" if clear else ""
     head += " Order | Clicks/min | Noise floor dB | Tone dB | Pitch Hz | Words/min |"
     head += " Listener | Lowest tenth | Lowest 10 s at |" if heard else ""
     md += [head, "|" + "---|" * (head.count("|") - 1)]
@@ -195,6 +224,8 @@ def scorecard_markdown(rows: list[dict]) -> str:
             hot = ", ".join(f"{_clock(t)} ({f:.0f})" for t, f in r["hottest"]) or "-"
             line += (f" {r['fire']:.0f} | {r['lift']:+.1f} | {r['movement']:.1f} | {r['range']:.1f} | "
                      f"{r['brightness']:.0f} | {hot} |")
+        if clear:
+            line += f" {r['enunciation']:.1f} |" if r["enunciation"] == r["enunciation"] else " - |"
         line += (f" {r['order']:.1f} | {r['clicks']:.1f} | {r['noise_floor']:.1f} | "
                  f"{r['tone']:.1f} | {pitch_} | {pace} |")
         if heard:
@@ -209,6 +240,10 @@ def scorecard_markdown(rows: list[dict]) -> str:
                      "centre of mass of the voice's "
                      "spectrum up to 8 kHz, which also moves with microphone placement. Hottest minutes: where each "
                      "minute starts, with its fire.")
+    if clear:
+        notes.append("Enunciation: of the everyday words (the words in at least a third of the reference recordings, "
+                     "so that names and jargon drop out), how many per hundred the speech recognizer doubts, giving "
+                     "them a probability under 0.9. Fewer is clearer. It doesn't depend on fire.")
     notes.append("Clicks: mouth clicks alone in pauses. Noise floor: as ACX measures it. Tone: how far the file's balance "
                  "of low, middle and high frequencies is from the middle of the set. Pitch: median over the whole file. "
                  "Words/min: from the finished file's transcript."
@@ -224,8 +259,10 @@ def scorecard_csv(rows: list[dict]) -> str:
     import io
     heard = bool(rows) and all(r["pesq"] is not None for r in rows)
     fired = bool(rows) and all("fire" in r for r in rows)
+    clear = bool(rows) and all("enunciation" in r for r in rows)
     cols = ["Recording", "Recorded", "Minutes"]
     cols += ["Fire", "Lift st", "Movement st/s", "Range st", "Brightness Hz", "Hottest minutes"] if fired else []
+    cols += ["Enunciation /100"] if clear else []
     cols += ["Order", "Clicks/min", "Noise floor dB", "Tone dB", "Pitch Hz", "Words/min"]
     cols += ["Listener", "Lowest tenth", "Lowest 10 s at"] if heard else []
     out = io.StringIO()
@@ -237,6 +274,8 @@ def scorecard_csv(rows: list[dict]) -> str:
             row += [round(r["fire"], 1), round(r["lift"], 2), round(r["movement"], 2), round(r["range"], 2),
                     round(r["brightness"], 1),
                     "; ".join(f"{_clock(t)} ({f:.0f})" for t, f in r["hottest"])]
+        if clear:
+            row += [round(r["enunciation"], 2) if r["enunciation"] == r["enunciation"] else ""]
         row += [round(r["order"], 1), round(r["clicks"], 2), round(r["noise_floor"], 1), round(r["tone"], 2),
                 round(r["pitch"], 1) if r["pitch"] is not None else "", round(r["pace"], 1) if r["pace"] is not None else ""]
         if heard:

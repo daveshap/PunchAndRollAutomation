@@ -66,6 +66,7 @@ Score the finished product, never the raw recording. David, 14 Oct 2026: "you sh
 | Range st | How far the pitch swings: from its 10th to its 90th percentile while voiced, in semitones. |
 | Brightness Hz | Centre of mass of the voice's spectrum up to 8 kHz, on the louder half of the voiced frames. |
 | Hottest minutes | The three minutes of the file with the most fire: where each starts, and its fire. |
+| Enunciation /100 | With `--enunciation`: everyday words per hundred that the speech recognizer doubts. Fewer is clearer. |
 | Order | Average rank on clicks, tonal distance and available listener scores (production quality). |
 | Clicks/min | Isolated short spikes in pauses, in the 1–10 kHz band. |
 | Noise floor dB | The finished file's noise floor, as ACX measures it. |
@@ -92,6 +93,28 @@ Fire combines the four parts with equal weight, so it rewards a warmed-up, anima
 
 - **Brightness moves with microphone placement as well as with the voice.** Compare sessions recorded with the microphone in its usual place, and read the parts, not only the total. Without brightness, two of the three 15 Oct recordings fall to the middle of the ranking, so that session's lead rests partly on it.
 - **The scale is the speaker's own.** `--calibrate-fire` sets it from the recordings given (`fire-reference.json`, beside the first project file). Without the file, the score is relative to whatever set is scored and moves as recordings are added. Recalibrate only on purpose: every number in the earlier reports is on the old scale.
+
+### Enunciation
+
+David, 17 Oct 2026, on the narration of "How Jobs Actually Disappear": "what people are noticing is just how entirely clear the enunciation is. But the thing is, for most listeners, particularly for audiobooks, that is the entire job. it's not just the words being spoken, it's HOW they are spoken (clarity, emphasis) so yeah if you can find a way to also measure prosody and enunciation that would be a good measure." That recording had scored an average 50 on fire, and he heard "a sober, self-possessed clarity with still really good prosody".
+
+`--enunciation` asks a machine listener: the recognizer that transcribes the recordings, which reports a log-probability for every token that it hears. A word's probability is the product of its tokens'.
+
+- **Only everyday words count.** These are the words found in at least a third of the reference recordings, 293 words for the 28 recordings of 2 to 16 Oct 2026, so names and jargon, which a recognizer doubts whoever says them, drop out. Each recording has about 600 to 1,300 of them.
+- **A word is doubted** when the recognizer gives it a probability under 0.9. The score is the number of doubted words per hundred everyday words.
+- **The word list is fixed** in `enunciation-reference.json` beside the first project file, made from the recordings of the first run, so that later recordings are counted on the same words. `--calibrate-enunciation` makes the list again.
+- **The recognizer's word confidences are cached** with the transcripts, so only new files take the extra 30 seconds or so.
+
+On those 28 recordings it ran from 4.3 to 7.9 doubted words per hundred.
+
+- **Recording 13, the narration that he and his viewers singled out, was third clearest.** The others in the top five were pieces 15, 9 and 12 and part 2 of chapter 1.
+- **The least clear** were pieces 6, 3 and 19 (the charts piece). Piece 19 is the one most full of numbers.
+- **It doesn't depend on fire** (correlation 0.07): recording 13 sat in the middle on fire, and the rats piece, top on fire, sat in the middle on enunciation.
+
+Cautions:
+
+- **Each count is a sample of a few hundred words**, so differences under about one word per hundred are within noise.
+- **The recognizer also doubts fast or run-together speech and unusual phrasing**, so the material still counts for something. Compare recordings of like material where you can.
 
 ### Trained listener
 

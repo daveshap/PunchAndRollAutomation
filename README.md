@@ -99,7 +99,7 @@ This writes a float WAV and a source/output map. Use the assembled recording in 
 | `verify FILE --script book.docx` | Manuscript differences, pickups, small differences, missing lines, added material and ACX measurements. |
 | `batch project.toml --proof` | Manuscript proof reports for finished project audio. |
 | `standards FILES` | ACX and ElevenLabs measurements, format, pauses, mouth-click rate, tonal consistency and total duration. |
-| `scorecard P.toml... --listener` | The finished files side by side, best first by fire (lift, movement, range, brightness, hottest minutes), with clicks, noise floor, tone, pitch, pace and trained-listener estimates; as Markdown and as a CSV beside it. |
+| `scorecard P.toml... --listener --enunciation` | The finished files side by side, best first by fire (lift, movement, range, brightness, hottest minutes), with enunciation (the everyday words a speech recognizer doubts), clicks, noise floor, tone, pitch, pace and trained-listener estimates; as Markdown and as a CSV beside it. |
 | `readback EDITED --markup M` | Every word the mark-up kept, checked against the finished file: missing, doubled or returned words, with the nearest join. |
 | `clicks RAW EDITED` | Each click counted in the finished file, traced to the recording and its place in the mark-up. |
 | `lost RAW EDITED` | Stretches cut from the recording that are never said again: asides, slips, or something lost. |

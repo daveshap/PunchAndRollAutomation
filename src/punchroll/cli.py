@@ -94,6 +94,12 @@ def main(argv=None) -> int:
                    help="the fire scale file (default: fire-reference.json beside the first project file)")
     p.add_argument("--calibrate-fire", action="store_true",
                    help="set the fire scale from these recordings and save it to the fire scale file")
+    p.add_argument("--enunciation", action="store_true",
+                   help="add enunciation: the everyday words per hundred that the speech recognizer doubts "
+                        "(about 30 s a file the first time, cached after that)")
+    p.add_argument("--calibrate-enunciation", action="store_true",
+                   help="take the everyday words from these recordings again and save them "
+                        "(enunciation-reference.json beside the first project file)")
 
     p = sub.add_parser("readback", help="check a finished file holds every word its mark-up kept, once and in order")
     p.add_argument("finished", help="the finished MP3 or WAV; its .edit.json beside it gives the joins")
@@ -239,7 +245,9 @@ def _run(a) -> int:
 
     if a.cmd == "scorecard":
         from .scorecard import scorecard, scorecard_csv, scorecard_markdown
-        rows = scorecard(a.project, listener=a.listener, reference=a.fire_reference, calibrate_fire=a.calibrate_fire)
+        rows = scorecard(a.project, listener=a.listener, reference=a.fire_reference, calibrate_fire=a.calibrate_fire,
+                         enunciation=a.enunciation or a.calibrate_enunciation,
+                         calibrate_enunciation=a.calibrate_enunciation)
         if not rows:
             raise ValueError("no recording of these projects has a finished WAV yet")
         md = scorecard_markdown(rows)
