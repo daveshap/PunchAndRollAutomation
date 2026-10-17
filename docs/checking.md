@@ -55,18 +55,92 @@ The `standards` report also gives the longest pause, click rate, tonal distance 
 
 Score the finished product, never the raw recording. David, 14 Oct 2026: "you should not be scoring the raw file" and "you should be scoring the final product". How a take went in the room (how much was cut, how noisy the raw recording was, what processing did to it) doesn't count; what the finished file is like does.
 
-`scorecard` reads each finished WAV and nothing from the source recording.
+`scorecard` reads each finished WAV and nothing from the source recording. Give it every project file whose recordings belong in one comparison (`scorecard labor-zero.toml voice-clone.toml`). It sorts the recordings by fire, highest first, and writes the table twice: as Markdown, and as a CSV of the same name for a spreadsheet.
 
 | Column | Measurement |
 |---|---|
+| Recorded | The date in the chapter's entry in the project file. |
+| Fire | Lift, movement, range and brightness on one scale: 50 is the reference set's average, every 10 a standard deviation. |
+| Lift st | Median pitch over the whole file, in semitones above the reference set's average. |
+| Movement st/s | How fast the pitch moves along each voiced stretch, in semitones per second. |
+| Range st | How far the pitch swings: from its 10th to its 90th percentile while voiced, in semitones. |
+| Brightness Hz | Centre of mass of the voice's spectrum up to 8 kHz, on the louder half of the voiced frames. |
+| Hottest minutes | The three minutes of the file with the most fire: where each starts, and its fire. |
+| Clarity | With `--clarity`: enunciation, landing and reset on one scale. As with fire, 50 is the reference set's average and every 10 a standard deviation. |
+| Enunciation /100 | Everyday words per hundred that the speech recognizer doubts. Fewer is clearer. |
+| Landing | How far a statement's pitch falls at its end, in the file's own pitch ranges (median). |
+| Reset | How far the next sentence starts up again, in the same units (median). |
+| Order | Average rank on clicks, tonal distance and available listener scores (production quality). |
 | Clicks/min | Isolated short spikes in pauses, in the 1–10 kHz band. |
 | Noise floor dB | The finished file's noise floor, as ACX measures it. |
 | Tone dB | Octave-band distance from the set's median balance. |
-| Pitch Hz | Median voice pitch over the middle 100 seconds. |
+| Pitch Hz | Median voice pitch over the whole file. |
 | Words/min | Words in the finished file's transcript per minute, when it has been transcribed. |
-| Order | Average rank on clicks, tonal distance and available listener scores. |
 
 Compare recordings made and processed under similar conditions. Use the individual measurements to select a coherent set and identify passages to improve.
+
+### Fire
+
+David, 17 Oct 2026: "I want to add this brightness/fire as a standard measurement to all files as this, I think, now that we've solved the basic production quality, will be the prime determinant of the files that get used for the PVC" and "put a number on it, and include it in the standard report". He had heard it before it was measured. Three recordings made back to back on 15 Oct 2026 (the Scion, essential demand and communism scripts) have "the pop and fire that we want to focus on". He also asked for the parts to be shown beside the score, "so I can see my progress". Range was added the same day, after research into what listeners hear as charisma; his words: "if that is something we can measure and quantify, absolutely. Let's science the shit out of making the perfect PVC".
+
+How it was found, on the 28 finished recordings of 2 to 16 Oct 2026 (Claude's account). Each candidate was compared minute by minute: the three fire recordings against the rest, against the session closest to them in setup (16 Oct, the next morning), and against the other late-morning sessions.
+
+- **Timing and phrasing don't separate them:** words per phrase, articulation rate, pauses, pitch resets and declination.
+- **Voice-source measures don't either:** glottal flow by inverse filtering (NAQ, QOQ), H1–H2, cepstral peak prominence and harmonics-to-noise ratio. They track the low, slightly creaky morning voice instead.
+- **Pitch height and pitch movement** track how warmed up the voice is, for which David's own guess was the time of day ("after I've had my coffee, biscuit, and some social engagement"). They were lowest in the 7 a.m. sessions of 14 and 16 Oct, and as high in the late-morning sessions as on 15 Oct. The 7 a.m. session of 8 Oct was nearly as animated, so the clock alone is not the cause.
+- **Brightness** was the one measure on which 15 Oct stood above every other session, the next morning's included.
+
+**Range** is the best-evidenced voice measure of charisma. Across 51 speakers, the distance from the 10th to the 90th percentile of pitch correlated .52 with rated charisma (.62 for men), where the plain lowest-to-highest range gave .04 (Niebuhr and Skarnitzl, ICPhS 2019). In resynthesis, widening a voice's range raised its ratings while moving its pitch up or down by 2 semitones did not (Berger et al., DAGA 2017). Range doesn't depend on the microphone. Adding it kept 9 of the top 10 recordings the same.
+
+Fire combines the four parts with equal weight, so it rewards a warmed-up, animated, wide-ranging, projected read. It was not fitted to the three recordings. Two cautions:
+
+- **Brightness moves with microphone placement as well as with the voice.** Compare sessions recorded with the microphone in its usual place, and read the parts, not only the total. Without brightness, two of the three 15 Oct recordings fall to the middle of the ranking, so that session's lead rests partly on it.
+- **Any recording can be scored on the same scale** with `punchroll fire FILES` (run it in the folder that holds `fire-reference.json`, or name the file with `--reference`). The warm-up experiment uses it on a one-minute probe read three times a session: cold, after the warm-up, and after the last piece. The text is the same each time, so only the reader's state changes.
+- **The scale is the speaker's own.** `--calibrate-fire` sets it from the recordings given (`fire-reference.json`, beside the first project file). Without the file, the score is relative to whatever set is scored and moves as recordings are added. Recalibrate only on purpose: every number in the earlier reports is on the old scale.
+
+### Clarity
+
+Fire rewards energy. Clarity rewards control: every word clearly said, every statement landed, and every new sentence started afresh. David, 17 Oct 2026, of the narration of "How Jobs Actually Disappear", which had scored an average 50 on fire: "a sober, self-possessed clarity with still really good prosody", and "exactly the kind of cadence/prosody for my audiobook too".
+
+`--clarity` puts three parts on one scale, each a z-score against the reference set, averaged and scaled like fire's. The scale and its everyday words are in `clarity-reference.json` beside the first project file. The first run with `--clarity` sets it from the recordings given, and `--calibrate-clarity` sets it again.
+
+- **Enunciation:** below.
+- **Landing:** for each statement, which is a sentence of the finished transcript that ends in a full stop, its median pitch minus the low end of its last word (the median of the lower half of that word's voiced frames), divided by the file's pitch range from the 10th to the 90th percentile. The median over the file counts. Skilled readers end statements with large falls, and listeners hear a falling end as confident.
+- **Reset:** the top of the pitch (90th percentile) over the first two words of the next sentence, minus the low end of the sentence before, in the same units. The new sentence starts afresh.
+
+Dividing by the file's own range measures where the pitch moves, not how much it moves, which is fire's business. Pauses are left out on purpose: punchroll sets them in the edit, so they would score the editor and not the reader. Sentence ends come from the punctuation of the finished transcript (`punchroll said build`), matched to the recognizer's word timings for the finished file. A file with no finished transcript gets enunciation only.
+
+What the research says (Claude's reading, 17 Oct 2026):
+
+- **The best-evidenced cues to clear, confident narration that a finished file keeps** are articulation (vowel space), a decisive fall at the end of statements (Vaughan-Johnston et al. 2024; Goupil et al. 2021; skilled readers in Schwanenflugel's reading-prosody work), and marking sentence boundaries with a pitch reset and final lengthening (Yang et al. 2014).
+- **Measures not used.** The classic clear-speech cues of energy at 1 to 3 kHz and envelope modulation depth move with the microphone, the noise reduction and the compressor. Pause measures score the edit. Vowel formants are left for later; they need a pronouncing dictionary and LPC tracking.
+
+On the 28 recordings of 2 to 16 Oct 2026:
+
+- **The narration he singled out ("labor attrition") was near the top on all three parts:** third for enunciation, about fourth for landing and about third for reset. Only 11 percent of its statements failed to fall, the second fewest.
+- **The fieriest reads landed least.** Piece 8 left 41 percent of its statements up in the air, and piece 4 was lowest.
+
+#### Enunciation
+
+David, 17 Oct 2026, on the narration of "How Jobs Actually Disappear": "what people are noticing is just how entirely clear the enunciation is. But the thing is, for most listeners, particularly for audiobooks, that is the entire job. it's not just the words being spoken, it's HOW they are spoken (clarity, emphasis) so yeah if you can find a way to also measure prosody and enunciation that would be a good measure." That recording had scored an average 50 on fire, and he heard "a sober, self-possessed clarity with still really good prosody".
+
+Enunciation asks a machine listener: the recognizer that transcribes the recordings, which reports a log-probability for every token that it hears. A word's probability is the product of its tokens'.
+
+- **Only everyday words count.** These are the words found in at least a third of the reference recordings, 293 words for the 28 recordings of 2 to 16 Oct 2026, so names and jargon, which a recognizer doubts whoever says them, drop out. Each recording has about 600 to 1,300 of them.
+- **A word is doubted** when the recognizer gives it a probability under 0.9. The score is the number of doubted words per hundred everyday words.
+- **The word list is fixed** with the clarity scale in `clarity-reference.json`, so that later recordings are counted on the same words.
+- **The recognizer's word confidences are cached** with the transcripts, so only new files take the extra 30 seconds or so.
+
+On those 28 recordings it ran from 4.3 to 7.9 doubted words per hundred.
+
+- **Recording 13, the narration that he and his viewers singled out, was third clearest.** The others in the top five were pieces 15, 9 and 12 and part 2 of chapter 1.
+- **The least clear** were pieces 6, 3 and 19 (the charts piece). Piece 19 is the one most full of numbers.
+- **It doesn't depend on fire** (correlation 0.07): recording 13 sat in the middle on fire, and the rats piece, top on fire, sat in the middle on enunciation.
+
+Cautions:
+
+- **Each count is a sample of a few hundred words**, so differences under about one word per hundred are within noise.
+- **The recognizer also doubts fast or run-together speech and unusual phrasing**, so the material still counts for something. Compare recordings of like material where you can.
 
 ### Trained listener
 

@@ -7,7 +7,9 @@
   punchroll verify EDITED --script S   proof a finished file against its manuscript and ACX; writes no audio
   punchroll batch project.toml --proof   the same for every finished file in a project
   punchroll standards EDITED...        check finished files against ACX and ElevenLabs
-  punchroll scorecard project.toml     score every finished recording side by side, on the finished files alone
+  punchroll scorecard P.toml...        score every finished recording side by side, on the finished files alone;
+                                       best first by fire (the delivery's lift, movement, range and brightness)
+  punchroll fire FILES...              any recordings on the saved fire scale, such as warm-up probe reads
   punchroll readback EDITED --markup M check a finished file holds every word its mark-up kept, once and in order
   punchroll clicks RAW EDITED          trace each click counted in a finished file back to the mark-up
   punchroll declick MARKUP             strike clicks in a mark-up by the method; with --raw and --finished, the traced ones too
@@ -83,11 +85,27 @@ def main(argv=None) -> int:
     p.add_argument("audio", nargs="+", help="finished files (MP3 or WAV); wildcards are expanded")
     p.add_argument("-o", "--out", help="also write the report to this Markdown file")
 
-    p = sub.add_parser("scorecard", help="score every finished recording of a project side by side")
-    p.add_argument("project")
-    p.add_argument("-o", "--out", help="Markdown file to write (default: scorecard.md in the project's output folder)")
+    p = sub.add_parser("scorecard", help="score every finished recording of one or more projects side by side")
+    p.add_argument("project", nargs="+", help="project files; their recordings are scored together")
+    p.add_argument("-o", "--out",
+                   help="Markdown file to write (default: scorecard.md in the first project's output folder)")
     p.add_argument("--listener", action="store_true",
                    help='add a trained listener\'s estimate of each file (needs pip install -e ".[listen]")')
+    p.add_argument("--fire-reference",
+                   help="the fire scale file (default: fire-reference.json beside the first project file)")
+    p.add_argument("--calibrate-fire", action="store_true",
+                   help="set the fire scale from these recordings and save it to the fire scale file")
+    p.add_argument("--clarity", "--enunciation", action="store_true", dest="clarity",
+                   help="add clarity: enunciation (the everyday words a speech recognizer doubts; about 30 s a file "
+                        "the first time, cached after that), landing and reset, on one scale")
+    p.add_argument("--calibrate-clarity", action="store_true",
+                   help="set the clarity scale and its everyday words from these recordings and save them "
+                        "(clarity-reference.json beside the first project file)")
+
+    p = sub.add_parser("fire", help="any recordings, such as warm-up probe reads, on the saved fire scale")
+    p.add_argument("files", nargs="+", help="WAV or MP3 files (wildcards allowed)")
+    p.add_argument("--reference", help="the fire scale file (default: fire-reference.json in this folder)")
+    p.add_argument("--minutes", action="store_true", help="also give the fire of every minute of each file")
 
     p = sub.add_parser("readback", help="check a finished file holds every word its mark-up kept, once and in order")
     p.add_argument("finished", help="the finished MP3 or WAV; its .edit.json beside it gives the joins")
@@ -231,17 +249,45 @@ def _run(a) -> int:
         print(md)
         return 0
 
+    if a.cmd == "fire":
+        from .audio import read_mono
+        from .fire import fire_measures, fire_score, load_reference
+        ref_path = Path(a.reference) if a.reference else Path("fire-reference.json")
+        if not ref_path.is_file():
+            raise ValueError(f"no fire scale at {ref_path}: run scorecard with --calibrate-fire first, "
+                             "or name the scale file with --reference")
+        ref = load_reference(ref_path)
+        files = [f for pat in a.files for f in (sorted(glob.glob(pat)) or [pat])]
+        print(f"Fire scale: {ref.get('note', ref_path.name)}. 50 is that set's average, every 10 a standard deviation.")
+        print("\n| File | Min | Fire | Lift st | Movement st/s | Range st | Brightness Hz |\n|---|---|---|---|---|---|---|")
+        for f in files:
+            x, sr = read_mono(f)
+            m = fire_measures(x, sr)
+            if m is None:
+                print(f"| {Path(f).name} | {len(x) / sr / 60:.1f} | too little voiced speech | | | | |")
+                continue
+            print(f"| {Path(f).name} | {len(x) / sr / 60:.1f} | {fire_score(m, ref):.0f} | "
+                  f"{m['lift'] - ref['mean']['lift']:+.1f} | {m['movement']:.1f} | {m.get('range', float('nan')):.1f} | "
+                  f"{m['brightness']:.0f} |")
+            if a.minutes and m["minutes"]:
+                print("|   minutes | " + ", ".join(f"{int(mm['at'] // 60)}:{mm['at'] % 60:02.0f} ({fire_score(mm, ref):.0f})"
+                                             for mm in m["minutes"]) + " | | | | | |")
+        return 0
+
     if a.cmd == "scorecard":
-        from .scorecard import scorecard, scorecard_markdown
-        rows = scorecard(a.project, listener=a.listener)
+        from .scorecard import scorecard, scorecard_csv, scorecard_markdown
+        rows = scorecard(a.project, listener=a.listener, reference=a.fire_reference, calibrate_fire=a.calibrate_fire,
+                         clarity=a.clarity or a.calibrate_clarity, calibrate_clarity=a.calibrate_clarity)
         if not rows:
-            raise ValueError("no recording of this project has a finished WAV and an edit list yet")
+            raise ValueError("no recording of these projects has a finished WAV yet")
         md = scorecard_markdown(rows)
-        proj = _toml(a.project)
-        dest = Path(a.out) if a.out else Path(a.project).parent / proj.get("out", "edited") / "scorecard.md"
+        proj = _toml(a.project[0])
+        dest = Path(a.out) if a.out else Path(a.project[0]).parent / proj.get("out", "edited") / "scorecard.md"
         dest.write_text(md, encoding="utf-8")
+        table = dest.with_suffix(".csv")                 # the same table for a spreadsheet, beside the Markdown
+        table.write_text(scorecard_csv(rows), encoding="utf-8-sig")
         print(md)
-        print(f"Scorecard: {dest}")
+        print(f"Scorecard: {dest}\nAs a spreadsheet: {table}")
         return 0
 
     if a.cmd in ("readback", "clicks", "lost"):
