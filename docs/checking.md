@@ -92,6 +92,7 @@ How it was found, on the 28 finished recordings of 2 to 16 Oct 2026 (Claude's ac
 Fire combines the four parts with equal weight, so it rewards a warmed-up, animated, wide-ranging, projected read. It was not fitted to the three recordings. Two cautions:
 
 - **Brightness moves with microphone placement as well as with the voice.** Compare sessions recorded with the microphone in its usual place, and read the parts, not only the total. Without brightness, two of the three 15 Oct recordings fall to the middle of the ranking, so that session's lead rests partly on it.
+- **Any recording can be scored on the same scale** with `punchroll fire FILES` (run it in the folder that holds `fire-reference.json`, or name the file with `--reference`). The warm-up experiment uses it on a one-minute probe read three times a session: cold, after the warm-up, and after the last piece. The text is the same each time, so only the reader's state changes.
 - **The scale is the speaker's own.** `--calibrate-fire` sets it from the recordings given (`fire-reference.json`, beside the first project file). Without the file, the score is relative to whatever set is scored and moves as recordings are added. Recalibrate only on purpose: every number in the earlier reports is on the old scale.
 
 ### Enunciation

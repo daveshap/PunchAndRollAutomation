@@ -9,6 +9,7 @@
   punchroll standards EDITED...        check finished files against ACX and ElevenLabs
   punchroll scorecard P.toml...        score every finished recording side by side, on the finished files alone;
                                        best first by fire (the delivery's lift, movement, range and brightness)
+  punchroll fire FILES...              any recordings on the saved fire scale, such as warm-up probe reads
   punchroll readback EDITED --markup M check a finished file holds every word its mark-up kept, once and in order
   punchroll clicks RAW EDITED          trace each click counted in a finished file back to the mark-up
   punchroll declick MARKUP             strike clicks in a mark-up by the method; with --raw and --finished, the traced ones too
@@ -100,6 +101,11 @@ def main(argv=None) -> int:
     p.add_argument("--calibrate-enunciation", action="store_true",
                    help="take the everyday words from these recordings again and save them "
                         "(enunciation-reference.json beside the first project file)")
+
+    p = sub.add_parser("fire", help="any recordings, such as warm-up probe reads, on the saved fire scale")
+    p.add_argument("files", nargs="+", help="WAV or MP3 files (wildcards allowed)")
+    p.add_argument("--reference", help="the fire scale file (default: fire-reference.json in this folder)")
+    p.add_argument("--minutes", action="store_true", help="also give the fire of every minute of each file")
 
     p = sub.add_parser("readback", help="check a finished file holds every word its mark-up kept, once and in order")
     p.add_argument("finished", help="the finished MP3 or WAV; its .edit.json beside it gives the joins")
@@ -241,6 +247,31 @@ def _run(a) -> int:
         if a.out:
             Path(a.out).write_text(md, encoding="utf-8")
         print(md)
+        return 0
+
+    if a.cmd == "fire":
+        from .audio import read_mono
+        from .fire import fire_measures, fire_score, load_reference
+        ref_path = Path(a.reference) if a.reference else Path("fire-reference.json")
+        if not ref_path.is_file():
+            raise ValueError(f"no fire scale at {ref_path}: run scorecard with --calibrate-fire first, "
+                             "or name the scale file with --reference")
+        ref = load_reference(ref_path)
+        files = [f for pat in a.files for f in (sorted(glob.glob(pat)) or [pat])]
+        print(f"Fire scale: {ref.get('note', ref_path.name)}. 50 is that set's average, every 10 a standard deviation.")
+        print("\n| File | Min | Fire | Lift st | Movement st/s | Range st | Brightness Hz |\n|---|---|---|---|---|---|---|")
+        for f in files:
+            x, sr = read_mono(f)
+            m = fire_measures(x, sr)
+            if m is None:
+                print(f"| {Path(f).name} | {len(x) / sr / 60:.1f} | too little voiced speech | | | | |")
+                continue
+            print(f"| {Path(f).name} | {len(x) / sr / 60:.1f} | {fire_score(m, ref):.0f} | "
+                  f"{m['lift'] - ref['mean']['lift']:+.1f} | {m['movement']:.1f} | {m.get('range', float('nan')):.1f} | "
+                  f"{m['brightness']:.0f} |")
+            if a.minutes and m["minutes"]:
+                print("|   minutes | " + ", ".join(f"{int(mm['at'] // 60)}:{mm['at'] % 60:02.0f} ({fire_score(mm, ref):.0f})"
+                                             for mm in m["minutes"]) + " | | | | | |")
         return 0
 
     if a.cmd == "scorecard":

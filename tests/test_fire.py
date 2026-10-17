@@ -129,3 +129,17 @@ def test_scorecard_command_scores_several_projects_and_fixes_the_scale(tmp_path,
     assert main(["scorecard", str(tmp_path / "calm.toml"), "-o", str(out)]) == 0
     assert "(fire-reference.json)" in out.read_text(encoding="utf-8")
     capsys.readouterr()
+
+
+def test_fire_command_scores_any_files_on_the_saved_scale(tmp_path, capsys):
+    calm, lively = voice(20.0, f0=115.0, glide_st=0.5, rolloff=1.8), voice(20.0, f0=140.0, glide_st=3.0, rolloff=0.9, seed=1)
+    ref = reference_from([fire_measures(calm, SR), fire_measures(lively, SR)], note="two test voices")
+    (tmp_path / "fire-reference.json").write_text(json.dumps(ref), encoding="utf-8")
+    for name, x in (("probe - cold.wav", calm), ("probe - warm.wav", lively)):
+        sf.write(tmp_path / name, x, SR)
+    assert main(["fire", str(tmp_path / "probe - *.wav"), "--reference", str(tmp_path / "fire-reference.json"),
+                 "--minutes"]) == 0
+    out = capsys.readouterr().out
+    rows = {l.split("|")[1].strip(): l for l in out.splitlines() if l.startswith("| probe")}
+    fire = {k: float(v.split("|")[3]) for k, v in rows.items()}
+    assert fire["probe - warm.wav"] > fire["probe - cold.wav"] and "two test voices" in out
