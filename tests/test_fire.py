@@ -107,6 +107,9 @@ def test_scorecard_command_scores_several_projects_and_fixes_the_scale(tmp_path,
     assert ref["recordings"] == 2 and set(ref["mean"]) == {"lift", "movement", "brightness"}
     md = out.read_text(encoding="utf-8")
     assert md.index("| lively |") < md.index("| calm |") and "Fire scale: set on" in md
+    table = out.with_suffix(".csv").read_text(encoding="utf-8-sig").splitlines()
+    assert table[0].startswith("Recording,Recorded,Minutes,Fire,Lift st,Movement st/s,Brightness Hz")
+    assert [line.split(",")[0] for line in table[1:]] == ["lively", "calm"]
     # the next run reads the saved scale instead of setting a new one
     assert main(["scorecard", str(tmp_path / "calm.toml"), "-o", str(out)]) == 0
     assert "(fire-reference.json)" in out.read_text(encoding="utf-8")

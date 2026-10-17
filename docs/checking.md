@@ -55,7 +55,7 @@ The `standards` report also gives the longest pause, click rate, tonal distance 
 
 Score the finished product, never the raw recording. David, 14 Oct 2026: "you should not be scoring the raw file" and "you should be scoring the final product". How a take went in the room (how much was cut, how noisy the raw recording was, what processing did to it) doesn't count; what the finished file is like does.
 
-`scorecard` reads each finished WAV and nothing from the source recording. Give it every project file whose recordings belong in one comparison (`scorecard labor-zero.toml voice-clone.toml`). It sorts the recordings by fire, highest first.
+`scorecard` reads each finished WAV and nothing from the source recording. Give it every project file whose recordings belong in one comparison (`scorecard labor-zero.toml voice-clone.toml`). It sorts the recordings by fire, highest first, and writes the table twice: as Markdown, and as a CSV of the same name for a spreadsheet.
 
 | Column | Measurement |
 |---|---|

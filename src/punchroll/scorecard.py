@@ -211,3 +211,30 @@ def scorecard_markdown(rows: list[dict]) -> str:
                  + (" Listener: a trained model's estimate of PESQ out of 4.5." if heard else ""))
     md += [""] + "\n\n".join(notes).split("\n")
     return "\n".join(md) + "\n"
+
+
+def scorecard_csv(rows: list[dict]) -> str:
+    """The same table as a CSV for a spreadsheet: one row per recording, in the same order, numbers unrounded
+    past what the measurement supports."""
+    import csv
+    import io
+    heard = bool(rows) and all(r["pesq"] is not None for r in rows)
+    fired = bool(rows) and all("fire" in r for r in rows)
+    cols = ["Recording", "Recorded", "Minutes"]
+    cols += ["Fire", "Lift st", "Movement st/s", "Brightness Hz", "Hottest minutes"] if fired else []
+    cols += ["Order", "Clicks/min", "Noise floor dB", "Tone dB", "Pitch Hz", "Words/min"]
+    cols += ["Listener", "Lowest tenth", "Lowest 10 s at"] if heard else []
+    out = io.StringIO()
+    w = csv.writer(out, lineterminator="\n")
+    w.writerow(cols)
+    for r in sorted(rows, key=(lambda r: -r["fire"]) if fired else (lambda r: r["order"])):
+        row = [r["name"], r.get("recorded") or "", round(r["minutes"], 2)]
+        if fired:
+            row += [round(r["fire"], 1), round(r["lift"], 2), round(r["movement"], 2), round(r["brightness"], 1),
+                    "; ".join(f"{_clock(t)} ({f:.0f})" for t, f in r["hottest"])]
+        row += [round(r["order"], 1), round(r["clicks"], 2), round(r["noise_floor"], 1), round(r["tone"], 2),
+                round(r["pitch"], 1) if r["pitch"] is not None else "", round(r["pace"], 1) if r["pace"] is not None else ""]
+        if heard:
+            row += [round(r["pesq"], 3), round(r["pesq_low"], 3), "; ".join(_clock(t) for t, _ in r["lowest"])]
+        w.writerow(row)
+    return out.getvalue()

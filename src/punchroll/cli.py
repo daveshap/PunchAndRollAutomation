@@ -238,7 +238,7 @@ def _run(a) -> int:
         return 0
 
     if a.cmd == "scorecard":
-        from .scorecard import scorecard, scorecard_markdown
+        from .scorecard import scorecard, scorecard_csv, scorecard_markdown
         rows = scorecard(a.project, listener=a.listener, reference=a.fire_reference, calibrate_fire=a.calibrate_fire)
         if not rows:
             raise ValueError("no recording of these projects has a finished WAV yet")
@@ -246,8 +246,10 @@ def _run(a) -> int:
         proj = _toml(a.project[0])
         dest = Path(a.out) if a.out else Path(a.project[0]).parent / proj.get("out", "edited") / "scorecard.md"
         dest.write_text(md, encoding="utf-8")
+        table = dest.with_suffix(".csv")                 # the same table for a spreadsheet, beside the Markdown
+        table.write_text(scorecard_csv(rows), encoding="utf-8-sig")
         print(md)
-        print(f"Scorecard: {dest}")
+        print(f"Scorecard: {dest}\nAs a spreadsheet: {table}")
         return 0
 
     if a.cmd in ("readback", "clicks", "lost"):
