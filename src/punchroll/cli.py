@@ -95,12 +95,12 @@ def main(argv=None) -> int:
                    help="the fire scale file (default: fire-reference.json beside the first project file)")
     p.add_argument("--calibrate-fire", action="store_true",
                    help="set the fire scale from these recordings and save it to the fire scale file")
-    p.add_argument("--enunciation", action="store_true",
-                   help="add enunciation: the everyday words per hundred that the speech recognizer doubts "
-                        "(about 30 s a file the first time, cached after that)")
-    p.add_argument("--calibrate-enunciation", action="store_true",
-                   help="take the everyday words from these recordings again and save them "
-                        "(enunciation-reference.json beside the first project file)")
+    p.add_argument("--clarity", "--enunciation", action="store_true", dest="clarity",
+                   help="add clarity: enunciation (the everyday words a speech recognizer doubts; about 30 s a file "
+                        "the first time, cached after that), landing and reset, on one scale")
+    p.add_argument("--calibrate-clarity", action="store_true",
+                   help="set the clarity scale and its everyday words from these recordings and save them "
+                        "(clarity-reference.json beside the first project file)")
 
     p = sub.add_parser("fire", help="any recordings, such as warm-up probe reads, on the saved fire scale")
     p.add_argument("files", nargs="+", help="WAV or MP3 files (wildcards allowed)")
@@ -277,8 +277,7 @@ def _run(a) -> int:
     if a.cmd == "scorecard":
         from .scorecard import scorecard, scorecard_csv, scorecard_markdown
         rows = scorecard(a.project, listener=a.listener, reference=a.fire_reference, calibrate_fire=a.calibrate_fire,
-                         enunciation=a.enunciation or a.calibrate_enunciation,
-                         calibrate_enunciation=a.calibrate_enunciation)
+                         clarity=a.clarity or a.calibrate_clarity, calibrate_clarity=a.calibrate_clarity)
         if not rows:
             raise ValueError("no recording of these projects has a finished WAV yet")
         md = scorecard_markdown(rows)

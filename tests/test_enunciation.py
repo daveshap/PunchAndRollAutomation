@@ -52,28 +52,3 @@ def test_heard_joins_tokens_into_words_and_adds_their_log_probabilities():
     w = en.heard(np.zeros(16000 * 2, dtype=np.float32), [(0, 16000)], SimpleNamespace(rec=Rec()))
     assert [x["text"] for x in w] == ["the", "clarity"]
     assert abs(w[1]["logp"] - (-0.6)) < 1e-9
-
-
-def test_scorecard_adds_enunciation_and_fixes_the_word_list(tmp_path, monkeypatch, capsys):
-    (tmp_path / "edited").mkdir()
-    t = np.arange(16000 * 6) / 16000
-    clear = words(["the", "of", "and"] * 40)
-    mumbled = words(["the", "of", "and"] * 40, doubted=set(range(0, 120, 4)))
-    heard = {}
-    for name, w in (("clear", clear), ("mumbled", mumbled)):
-        sf.write(tmp_path / "edited" / f"{name}.wav", (0.1 * np.sin(2 * np.pi * 120 * t)).astype(np.float32), 16000)
-        (tmp_path / f"{name}.toml").write_text(f'out = "edited"\n\n[[chapter]]\nname = "{name}"\n', encoding="utf-8")
-        heard[name] = w
-    monkeypatch.setattr(en, "confidences", lambda path, x, sr, rec, cache: heard[path.stem])
-    out = tmp_path / "card.md"
-    assert main(["scorecard", str(tmp_path / "clear.toml"), str(tmp_path / "mumbled.toml"), "-o", str(out),
-                 "--enunciation"]) == 0
-    md = out.read_text(encoding="utf-8")
-    assert "Enunciation /100" in md and "Enunciation words:" in md
-    row = {l.split("|")[1].strip(): l for l in md.splitlines() if l.startswith("| clear") or l.startswith("| mumbled")}
-    assert "| 0.0 |" in row["clear"] and "| 25.0 |" in row["mumbled"]
-    ref = json.loads((tmp_path / en.REFERENCE_NAME).read_text(encoding="utf-8"))
-    assert ref["everyday"] == ["and", "of", "the"] and ref["recordings"] == 2
-    table = out.with_suffix(".csv").read_text(encoding="utf-8-sig").splitlines()
-    assert "Enunciation /100" in table[0]
-    capsys.readouterr()

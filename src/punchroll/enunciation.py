@@ -12,15 +12,13 @@ everyday words per hundred that the recognizer doubts (probability under 0.9): f
 of 2 to 16 Oct 2026 it ran from 4.3 to 7.9, put "labor attrition" (the narration of that film) third, and was
 unrelated to fire (correlation 0.07).
 
-The word list is fixed with the scale, in enunciation-reference.json beside the first project file, so that new
-recordings are counted on the same words.
+The word list is fixed with the clarity scale (clarity.py), so that new recordings are counted on the same words.
 """
 from __future__ import annotations
 
 import json
 import re
 from collections import Counter
-from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -31,7 +29,6 @@ from .audio import resample
 DOUBT = 0.9                 # a word the recognizer gives less than this probability is doubted
 EVERYDAY_SHARE = 1 / 3      # an everyday word is in at least this share of the reference recordings
 MIN_WORDS = 50              # fewer everyday words than this and the count says nothing
-REFERENCE_NAME = "enunciation-reference.json"
 
 
 def norm(text: str) -> str:
@@ -95,21 +92,3 @@ def doubted(words: list[dict], everyday) -> tuple[float, int]:
         return float("nan"), int(len(lp))
     return float(100 * np.mean(np.exp(lp) < DOUBT)), int(len(lp))
 
-
-def reference(recordings: list[list[dict]], path: Path | None, calibrate: bool, log=print) -> tuple[list[str], str]:
-    """The everyday words and a line saying where they come from.
-
-    calibrate: take them from these recordings and save them to path. Otherwise read them from path; if there is no
-    file there yet, take them from these recordings and save them, so that later recordings are counted on the same words.
-    """
-    if path is not None and Path(path).is_file() and not calibrate:
-        ref = json.loads(Path(path).read_text(encoding="utf-8"))
-        return ref["everyday"], f"Enunciation words: {ref.get('note', 'from ' + Path(path).name)} ({Path(path).name})."
-    words = everyday_words(recordings)
-    note = (f"the {len(words)} words found in at least a third of {len(recordings)} finished recordings, "
-            f"set on {date.today().isoformat()}")
-    if path is not None:
-        Path(path).write_text(json.dumps({"everyday": words, "recordings": len(recordings), "note": note}, indent=1),
-                              encoding="utf-8")
-        log(f"enunciation words saved to {path}")
-    return words, f"Enunciation words: {note}."

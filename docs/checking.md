@@ -66,7 +66,10 @@ Score the finished product, never the raw recording. David, 14 Oct 2026: "you sh
 | Range st | How far the pitch swings: from its 10th to its 90th percentile while voiced, in semitones. |
 | Brightness Hz | Centre of mass of the voice's spectrum up to 8 kHz, on the louder half of the voiced frames. |
 | Hottest minutes | The three minutes of the file with the most fire: where each starts, and its fire. |
-| Enunciation /100 | With `--enunciation`: everyday words per hundred that the speech recognizer doubts. Fewer is clearer. |
+| Clarity | With `--clarity`: enunciation, landing and reset on one scale. As with fire, 50 is the reference set's average and every 10 a standard deviation. |
+| Enunciation /100 | Everyday words per hundred that the speech recognizer doubts. Fewer is clearer. |
+| Landing | How far a statement's pitch falls at its end, in the file's own pitch ranges (median). |
+| Reset | How far the next sentence starts up again, in the same units (median). |
 | Order | Average rank on clicks, tonal distance and available listener scores (production quality). |
 | Clicks/min | Isolated short spikes in pauses, in the 1–10 kHz band. |
 | Noise floor dB | The finished file's noise floor, as ACX measures it. |
@@ -95,15 +98,37 @@ Fire combines the four parts with equal weight, so it rewards a warmed-up, anima
 - **Any recording can be scored on the same scale** with `punchroll fire FILES` (run it in the folder that holds `fire-reference.json`, or name the file with `--reference`). The warm-up experiment uses it on a one-minute probe read three times a session: cold, after the warm-up, and after the last piece. The text is the same each time, so only the reader's state changes.
 - **The scale is the speaker's own.** `--calibrate-fire` sets it from the recordings given (`fire-reference.json`, beside the first project file). Without the file, the score is relative to whatever set is scored and moves as recordings are added. Recalibrate only on purpose: every number in the earlier reports is on the old scale.
 
-### Enunciation
+### Clarity
+
+Fire rewards energy. Clarity rewards control: every word clearly said, every statement landed, and every new sentence started afresh. David, 17 Oct 2026, of the narration of "How Jobs Actually Disappear", which had scored an average 50 on fire: "a sober, self-possessed clarity with still really good prosody", and "exactly the kind of cadence/prosody for my audiobook too".
+
+`--clarity` puts three parts on one scale, each a z-score against the reference set, averaged and scaled like fire's. The scale and its everyday words are in `clarity-reference.json` beside the first project file. The first run with `--clarity` sets it from the recordings given, and `--calibrate-clarity` sets it again.
+
+- **Enunciation:** below.
+- **Landing:** for each statement, which is a sentence of the finished transcript that ends in a full stop, its median pitch minus the low end of its last word (the median of the lower half of that word's voiced frames), divided by the file's pitch range from the 10th to the 90th percentile. The median over the file counts. Skilled readers end statements with large falls, and listeners hear a falling end as confident.
+- **Reset:** the top of the pitch (90th percentile) over the first two words of the next sentence, minus the low end of the sentence before, in the same units. The new sentence starts afresh.
+
+Dividing by the file's own range measures where the pitch moves, not how much it moves, which is fire's business. Pauses are left out on purpose: punchroll sets them in the edit, so they would score the editor and not the reader. Sentence ends come from the punctuation of the finished transcript (`punchroll said build`), matched to the recognizer's word timings for the finished file. A file with no finished transcript gets enunciation only.
+
+What the research says (Claude's reading, 17 Oct 2026):
+
+- **The best-evidenced cues to clear, confident narration that a finished file keeps** are articulation (vowel space), a decisive fall at the end of statements (Vaughan-Johnston et al. 2024; Goupil et al. 2021; skilled readers in Schwanenflugel's reading-prosody work), and marking sentence boundaries with a pitch reset and final lengthening (Yang et al. 2014).
+- **Measures not used.** The classic clear-speech cues of energy at 1 to 3 kHz and envelope modulation depth move with the microphone, the noise reduction and the compressor. Pause measures score the edit. Vowel formants are left for later; they need a pronouncing dictionary and LPC tracking.
+
+On the 28 recordings of 2 to 16 Oct 2026:
+
+- **The narration he singled out ("labor attrition") was near the top on all three parts:** third for enunciation, about fourth for landing and about third for reset. Only 11 percent of its statements failed to fall, the second fewest.
+- **The fieriest reads landed least.** Piece 8 left 41 percent of its statements up in the air, and piece 4 was lowest.
+
+#### Enunciation
 
 David, 17 Oct 2026, on the narration of "How Jobs Actually Disappear": "what people are noticing is just how entirely clear the enunciation is. But the thing is, for most listeners, particularly for audiobooks, that is the entire job. it's not just the words being spoken, it's HOW they are spoken (clarity, emphasis) so yeah if you can find a way to also measure prosody and enunciation that would be a good measure." That recording had scored an average 50 on fire, and he heard "a sober, self-possessed clarity with still really good prosody".
 
-`--enunciation` asks a machine listener: the recognizer that transcribes the recordings, which reports a log-probability for every token that it hears. A word's probability is the product of its tokens'.
+Enunciation asks a machine listener: the recognizer that transcribes the recordings, which reports a log-probability for every token that it hears. A word's probability is the product of its tokens'.
 
 - **Only everyday words count.** These are the words found in at least a third of the reference recordings, 293 words for the 28 recordings of 2 to 16 Oct 2026, so names and jargon, which a recognizer doubts whoever says them, drop out. Each recording has about 600 to 1,300 of them.
 - **A word is doubted** when the recognizer gives it a probability under 0.9. The score is the number of doubted words per hundred everyday words.
-- **The word list is fixed** in `enunciation-reference.json` beside the first project file, made from the recordings of the first run, so that later recordings are counted on the same words. `--calibrate-enunciation` makes the list again.
+- **The word list is fixed** with the clarity scale in `clarity-reference.json`, so that later recordings are counted on the same words.
 - **The recognizer's word confidences are cached** with the transcripts, so only new files take the extra 30 seconds or so.
 
 On those 28 recordings it ran from 4.3 to 7.9 doubted words per hundred.
