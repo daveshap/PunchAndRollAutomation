@@ -60,9 +60,10 @@ Score the finished product, never the raw recording. David, 14 Oct 2026: "you sh
 | Column | Measurement |
 |---|---|
 | Recorded | The date in the chapter's entry in the project file. |
-| Fire | Lift, movement and brightness on one scale: 50 is the reference set's average, every 10 a standard deviation. |
+| Fire | Lift, movement, range and brightness on one scale: 50 is the reference set's average, every 10 a standard deviation. |
 | Lift st | Median pitch over the whole file, in semitones above the reference set's average. |
 | Movement st/s | How fast the pitch moves along each voiced stretch, in semitones per second. |
+| Range st | How far the pitch swings: from its 10th to its 90th percentile while voiced, in semitones. |
 | Brightness Hz | Centre of mass of the voice's spectrum up to 8 kHz, on the louder half of the voiced frames. |
 | Hottest minutes | The three minutes of the file with the most fire: where each starts, and its fire. |
 | Order | Average rank on clicks, tonal distance and available listener scores (production quality). |
@@ -76,7 +77,7 @@ Compare recordings made and processed under similar conditions. Use the individu
 
 ### Fire
 
-David, 17 Oct 2026: "I want to add this brightness/fire as a standard measurement to all files as this, I think, now that we've solved the basic production quality, will be the prime determinant of the files that get used for the PVC" and "put a number on it, and include it in the standard report". He had heard it before it was measured. Three recordings made back to back on 15 Oct 2026 (the Scion, essential demand and communism scripts) have "the pop and fire that we want to focus on". He also asked for the three parts to be shown beside the score, "so I can see my progress".
+David, 17 Oct 2026: "I want to add this brightness/fire as a standard measurement to all files as this, I think, now that we've solved the basic production quality, will be the prime determinant of the files that get used for the PVC" and "put a number on it, and include it in the standard report". He had heard it before it was measured. Three recordings made back to back on 15 Oct 2026 (the Scion, essential demand and communism scripts) have "the pop and fire that we want to focus on". He also asked for the parts to be shown beside the score, "so I can see my progress". Range was added the same day, after research into what listeners hear as charisma; his words: "if that is something we can measure and quantify, absolutely. Let's science the shit out of making the perfect PVC".
 
 How it was found, on the 28 finished recordings of 2 to 16 Oct 2026 (Claude's account). Each candidate was compared minute by minute: the three fire recordings against the rest, against the session closest to them in setup (16 Oct, the next morning), and against the other late-morning sessions.
 
@@ -85,9 +86,11 @@ How it was found, on the 28 finished recordings of 2 to 16 Oct 2026 (Claude's ac
 - **Pitch height and pitch movement** track how warmed up the voice is, for which David's own guess was the time of day ("after I've had my coffee, biscuit, and some social engagement"). They were lowest in the 7 a.m. sessions of 14 and 16 Oct, and as high in the late-morning sessions as on 15 Oct. The 7 a.m. session of 8 Oct was nearly as animated, so the clock alone is not the cause.
 - **Brightness** was the one measure on which 15 Oct stood above every other session, the next morning's included.
 
-Fire combines the three parts with equal weight, so it rewards a warmed-up, animated, projected read. It was not fitted to the three recordings. Two cautions:
+**Range** is the best-evidenced voice measure of charisma. Across 51 speakers, the distance from the 10th to the 90th percentile of pitch correlated .52 with rated charisma (.62 for men), where the plain lowest-to-highest range gave .04 (Niebuhr and Skarnitzl, ICPhS 2019). In resynthesis, widening a voice's range raised its ratings while moving its pitch up or down by 2 semitones did not (Berger et al., DAGA 2017). Range doesn't depend on the microphone. Adding it kept 9 of the top 10 recordings the same.
 
-- **Brightness moves with microphone placement as well as with the voice.** Compare sessions recorded with the microphone in its usual place, and read the three parts, not only the total.
+Fire combines the four parts with equal weight, so it rewards a warmed-up, animated, wide-ranging, projected read. It was not fitted to the three recordings. Two cautions:
+
+- **Brightness moves with microphone placement as well as with the voice.** Compare sessions recorded with the microphone in its usual place, and read the parts, not only the total. Without brightness, two of the three 15 Oct recordings fall to the middle of the ranking, so that session's lead rests partly on it.
 - **The scale is the speaker's own.** `--calibrate-fire` sets it from the recordings given (`fire-reference.json`, beside the first project file). Without the file, the score is relative to whatever set is scored and moves as recordings are added. Recalibrate only on purpose: every number in the earlier reports is on the old scale.
 
 ### Trained listener

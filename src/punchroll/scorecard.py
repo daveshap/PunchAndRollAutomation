@@ -7,11 +7,12 @@ on the finished file itself, never on the raw recording: how a take went in the 
 
 Columns:
   recorded     the date in the project file's chapter entry, if it has one
-  fire         lift, movement and brightness of the delivery on one scale (fire.py): 50 is the reference set's
+  fire         lift, movement, range and brightness of the delivery on one scale (fire.py): 50 is the reference set's
                average and every 10 is a standard deviation. The table is sorted by it, highest first. David,
                17 Oct 2026: fire "will be the prime determinant of the files that get used for the PVC".
   lift         median pitch in semitones above the reference set's average
   movement     how fast the pitch moves while voiced, semitones per second
+  range        how far the pitch swings: 10th to 90th percentile while voiced, semitones
   brightness   centre of mass of the voice's spectrum up to 8 kHz, Hz
   hottest      the minutes of the file with the most fire, with their fire
   clicks       mouth clicks alone in pauses, per minute, counting those within 30 dB of the file's level
@@ -22,7 +23,7 @@ Columns:
   listener     with --listener: a trained model's estimate of PESQ, 1 to 4.5
   order        the average of the file's rank on clicks, tone and (if run) listener; 1 is best
 
-The three parts of fire are shown beside it, so a change in fire can be traced to the part that moved (David,
+The parts of fire are shown beside it, so a change in fire can be traced to the part that moved (David,
 17 Oct 2026: "also present those three components as well just for reference so I can see my progress").
 Use the individual measurements to compare the recordings and inspect specific passages.
 """
@@ -80,14 +81,14 @@ def rank_rows(rows: list[dict]) -> None:
 
 
 def add_fire(rows: list[dict], ref: dict) -> None:
-    """Add 'fire', 'lift' (semitones above the reference's average), 'movement', 'brightness' and 'hottest'."""
+    """Add 'fire', 'lift' (semitones above the reference's average), 'movement', 'range', 'brightness', 'hottest'."""
     for r in rows:
         fm = r.get("fire_measures")
         if not fm:
             continue
         r["fire"] = fire_score(fm, ref)
         r["lift"] = fm["lift"] - ref["mean"]["lift"]
-        r["movement"], r["brightness"] = fm["movement"], fm["brightness"]
+        r["movement"], r["range"], r["brightness"] = fm["movement"], fm.get("range", float("nan")), fm["brightness"]
         r["hottest"] = hottest_minutes(fm, ref)
 
 
@@ -147,7 +148,7 @@ def scorecard(project, listener: bool = False, log=print, reference: Path | None
             fm = row["fire_measures"]
             log(f"{name}: clicks {row['clicks']:.1f}/min, noise floor {row['noise_floor']:.1f} dB"
                 + (f", listener {row['pesq']:.2f}" if row["pesq"] is not None else "")
-                + (f", pitch {fm['pitch_hz']:.0f} Hz, movement {fm['movement']:.1f} st/s, brightness "
+                + (f", pitch {fm['pitch_hz']:.0f} Hz, movement {fm['movement']:.1f} st/s, range {fm['range']:.1f} st, brightness "
                    f"{fm['brightness']:.0f} Hz" if fm else ", too little voiced speech for fire"))
     rank_rows(rows)
     if any(r.get("fire_measures") for r in rows):
@@ -170,7 +171,7 @@ def scorecard_markdown(rows: list[dict]) -> str:
     dated = any(r.get("recorded") for r in rows)
     quality = "clicks, tone" + (" and listener" if heard else "")
     if fired:
-        lead = (f"Best first by Fire: the lift, movement and brightness of the delivery (50 is the reference average, "
+        lead = (f"Best first by Fire: the lift, movement, range and brightness of the delivery (50 is the reference average, "
                 f"every 10 a standard deviation). Order is each file's average rank on {quality}; 1 is best.")
         sort_key = lambda r: -r["fire"]                                   # noqa: E731
     else:
@@ -182,7 +183,7 @@ def scorecard_markdown(rows: list[dict]) -> str:
     if fired:
         md += [rows[0]["fire_note"], ""]
     head = "| Recording |" + (" Recorded |" if dated else "") + " Min |"
-    head += " Fire | Lift st | Movement st/s | Brightness Hz | Hottest minutes |" if fired else ""
+    head += " Fire | Lift st | Movement st/s | Range st | Brightness Hz | Hottest minutes |" if fired else ""
     head += " Order | Clicks/min | Noise floor dB | Tone dB | Pitch Hz | Words/min |"
     head += " Listener | Lowest tenth | Lowest 10 s at |" if heard else ""
     md += [head, "|" + "---|" * (head.count("|") - 1)]
@@ -192,7 +193,8 @@ def scorecard_markdown(rows: list[dict]) -> str:
         line = f"| {r['name']} |" + (f" {r.get('recorded') or '-'} |" if dated else "") + f" {r['minutes']:.1f} |"
         if fired:
             hot = ", ".join(f"{_clock(t)} ({f:.0f})" for t, f in r["hottest"]) or "-"
-            line += f" {r['fire']:.0f} | {r['lift']:+.1f} | {r['movement']:.1f} | {r['brightness']:.0f} | {hot} |"
+            line += (f" {r['fire']:.0f} | {r['lift']:+.1f} | {r['movement']:.1f} | {r['range']:.1f} | "
+                     f"{r['brightness']:.0f} | {hot} |")
         line += (f" {r['order']:.1f} | {r['clicks']:.1f} | {r['noise_floor']:.1f} | "
                  f"{r['tone']:.1f} | {pitch_} | {pace} |")
         if heard:
@@ -200,9 +202,11 @@ def scorecard_markdown(rows: list[dict]) -> str:
         md.append(line)
     notes = []
     if fired:
-        notes.append("Fire: lift, movement and brightness, each in standard deviations from the reference set, averaged "
-                     "and scaled so the reference set averages 50. Lift: median pitch in semitones above the reference "
-                     "average. Movement: how fast the pitch moves while voiced. Brightness: centre of mass of the voice's "
+        notes.append("Fire: lift, movement, range and brightness, each in standard deviations from the reference set, "
+                     "averaged and scaled so the reference set averages 50. Lift: median pitch in semitones above the "
+                     "reference average. Movement: how fast the pitch moves while voiced. Range: how far the pitch swings, "
+                     "from its 10th to its 90th percentile, the best-evidenced voice measure of charisma. Brightness: "
+                     "centre of mass of the voice's "
                      "spectrum up to 8 kHz, which also moves with microphone placement. Hottest minutes: where each "
                      "minute starts, with its fire.")
     notes.append("Clicks: mouth clicks alone in pauses. Noise floor: as ACX measures it. Tone: how far the file's balance "
@@ -221,7 +225,7 @@ def scorecard_csv(rows: list[dict]) -> str:
     heard = bool(rows) and all(r["pesq"] is not None for r in rows)
     fired = bool(rows) and all("fire" in r for r in rows)
     cols = ["Recording", "Recorded", "Minutes"]
-    cols += ["Fire", "Lift st", "Movement st/s", "Brightness Hz", "Hottest minutes"] if fired else []
+    cols += ["Fire", "Lift st", "Movement st/s", "Range st", "Brightness Hz", "Hottest minutes"] if fired else []
     cols += ["Order", "Clicks/min", "Noise floor dB", "Tone dB", "Pitch Hz", "Words/min"]
     cols += ["Listener", "Lowest tenth", "Lowest 10 s at"] if heard else []
     out = io.StringIO()
@@ -230,7 +234,8 @@ def scorecard_csv(rows: list[dict]) -> str:
     for r in sorted(rows, key=(lambda r: -r["fire"]) if fired else (lambda r: r["order"])):
         row = [r["name"], r.get("recorded") or "", round(r["minutes"], 2)]
         if fired:
-            row += [round(r["fire"], 1), round(r["lift"], 2), round(r["movement"], 2), round(r["brightness"], 1),
+            row += [round(r["fire"], 1), round(r["lift"], 2), round(r["movement"], 2), round(r["range"], 2),
+                    round(r["brightness"], 1),
                     "; ".join(f"{_clock(t)} ({f:.0f})" for t, f in r["hottest"])]
         row += [round(r["order"], 1), round(r["clicks"], 2), round(r["noise_floor"], 1), round(r["tone"], 2),
                 round(r["pitch"], 1) if r["pitch"] is not None else "", round(r["pace"], 1) if r["pace"] is not None else ""]

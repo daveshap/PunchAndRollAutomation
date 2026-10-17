@@ -8,7 +8,7 @@
   punchroll batch project.toml --proof   the same for every finished file in a project
   punchroll standards EDITED...        check finished files against ACX and ElevenLabs
   punchroll scorecard P.toml...        score every finished recording side by side, on the finished files alone;
-                                       best first by fire (the delivery's lift, movement and brightness)
+                                       best first by fire (the delivery's lift, movement, range and brightness)
   punchroll readback EDITED --markup M check a finished file holds every word its mark-up kept, once and in order
   punchroll clicks RAW EDITED          trace each click counted in a finished file back to the mark-up
   punchroll declick MARKUP             strike clicks in a mark-up by the method; with --raw and --finished, the traced ones too

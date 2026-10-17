@@ -1,4 +1,4 @@
-"""Fire: the lift, movement and brightness of a narrator's delivery, measured on the finished file alone.
+"""Fire: the lift, movement, range and brightness of a narrator's delivery, measured on the finished file alone.
 
 David, 17 Oct 2026, once the basic production quality was solved: "I want to add this brightness/fire as a
 standard measurement to all files as this, I think, now that we've solved the basic production quality, will be
@@ -6,16 +6,23 @@ the prime determinant of the files that get used for the PVC" and "put a number 
 standard report". He had heard it first: three recordings made back to back on 15 Oct 2026 (the Scion, essential
 demand and communism scripts) have "the pop and fire that we want to focus on".
 
-Three measurements of the voice while speaking:
+Four measurements of the voice while speaking:
   lift        the median pitch, in semitones above 100 Hz. The scorecard shows it against the speaker's own
               reference, so +1.0 means a semitone higher than his typical recording.
   movement    how fast the pitch moves along each voiced stretch, in semitones per second: an animated read moves,
               a flat one doesn't. Steps over 1.5 semitones in 10 ms (octave slips, new syllables) are left out.
+  range       how far the pitch swings: the distance in semitones from its 10th to its 90th percentile while voiced
+              (the "80-percentile range"). Of the voice measures studied for charisma, this one has the best
+              evidence: across 51 speakers it correlated .52 with rated charisma, .62 for men, where the plain
+              lowest-to-highest range gave .04 (Niebuhr and Skarnitzl, ICPhS 2019); and widening a voice's range by
+              half raised its ratings while moving its pitch up or down by 2 semitones did not (Berger et al., DAGA
+              2017). Added 17 Oct 2026 at David's word: "if that is something we can measure and quantify,
+              absolutely. Let's science the shit out of making the perfect PVC".
   brightness  the centre of mass of the spectrum up to 8 kHz, in Hz, on the louder half of the voiced frames: how
               much of the voice's energy sits up high, the way it does when a speaker leans in and projects.
 
-Fire puts the three on one scale against a reference set of the same speaker's recordings: each measurement
-becomes standard deviations from the reference mean, the three are averaged, and the average is scaled so that the
+Fire puts the four on one scale against a reference set of the same speaker's recordings: each measurement
+becomes standard deviations from the reference mean, the four are averaged, and the average is scaled so that the
 reference set has a mean of 50 and a standard deviation of 10. So 60 is a step above his typical recording and 70
 two steps. The reference is fixed once (`fire-reference.json`), so a recording made next month lands on the same
 scale as these.
@@ -38,7 +45,7 @@ from scipy.signal import medfilt, resample_poly
 FS, HOP, N = 16000, 160, 640                 # 10 ms frames, 40 ms YIN window
 LO, HI = 60.0, 320.0
 TMAX, TMIN = int(FS / LO), int(FS / HI)
-PARTS = ("lift", "movement", "brightness")
+PARTS = ("lift", "movement", "range", "brightness")
 
 
 def _differences(frames: np.ndarray) -> np.ndarray:
@@ -129,13 +136,14 @@ def _parts(level, st, bright, speaking_db) -> dict | None:
     loud = voiced & (level >= np.median(level[voiced]))
     return {"lift": float(np.median(st[voiced])),
             "movement": float(np.mean(np.abs(steps[ok])) * 100) if ok.sum() > 100 else float("nan"),
+            "range": float(np.percentile(st[voiced], 90) - np.percentile(st[voiced], 10)),
             "brightness": float(np.nanmedian(bright[loud]))}
 
 
 def fire_measures(x: np.ndarray, sr: int, minute_s: float = 60.0) -> dict | None:
-    """Lift, movement and brightness of a finished file, for the whole file and for each minute of it.
+    """Lift, movement, range and brightness of a finished file, for the whole file and for each minute of it.
 
-    Returns {"pitch_hz", "lift", "movement", "brightness", "minutes": [{"at", "lift", "movement", "brightness"}]},
+    Returns {"pitch_hz", "lift", "movement", "range", "brightness", "minutes": [{"at", "lift", ...}]},
     or None if the file has too little voiced speech to measure.
     """
     y = np.asarray(x, dtype=np.float64)
@@ -183,7 +191,9 @@ def reference_from(measures: list[dict], note: str = "") -> dict:
 
 
 def _raw(r: dict, ref: dict) -> float:
-    return float(np.nanmean([(r[k] - ref["mean"][k]) / ref["sd"][k] for k in PARTS]))
+    """The parts' average distance from the reference, in standard deviations (only the parts the reference has,
+    so a scale set before a part was added still reads)."""
+    return float(np.nanmean([(r[k] - ref["mean"][k]) / ref["sd"][k] for k in PARTS if k in ref["mean"]]))
 
 
 def fire_score(r: dict, ref: dict) -> float:

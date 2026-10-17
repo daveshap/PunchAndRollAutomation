@@ -45,6 +45,14 @@ def test_movement_grows_with_a_moving_pitch():
     assert moving["movement"] > steady["movement"] + 3.0
 
 
+def test_range_grows_with_wider_swings():
+    narrow = fire_measures(voice(20.0, glide_st=1.0), SR)
+    wide = fire_measures(voice(20.0, glide_st=4.0), SR)
+    # a sine swing of +-g semitones spans 2 g sin(0.4 pi) = 1.9 g from its 10th to its 90th percentile
+    assert abs(narrow["range"] - 1.9) < 0.3 and abs(wide["range"] - 7.6) < 0.5
+    assert fire_measures(voice(20.0, glide_st=0.0), SR)["range"] < 0.5
+
+
 def test_brightness_grows_with_stronger_upper_harmonics():
     dark = fire_measures(voice(20.0, rolloff=2.0), SR)
     bright = fire_measures(voice(20.0, rolloff=0.7), SR)
@@ -58,13 +66,19 @@ def test_too_little_voice_gives_nothing():
 
 def test_the_scale_puts_the_reference_set_at_50_with_10_a_step():
     rng = np.random.default_rng(4)
-    ms = [{"lift": rng.normal(4, 1), "movement": rng.normal(13, 1), "brightness": rng.normal(400, 25)} for _ in range(30)]
+    ms = [{"lift": rng.normal(4, 1), "movement": rng.normal(13, 1), "range": rng.normal(12, 0.6),
+           "brightness": rng.normal(400, 25)} for _ in range(30)]
     ref = reference_from(ms)
     scores = np.array([fire_score(m, ref) for m in ms])
     assert scores.mean() == pytest.approx(50, abs=1e-9) and scores.std() == pytest.approx(10, abs=1e-9)
-    hot = {"lift": ref["mean"]["lift"] + ref["sd"]["lift"], "movement": ref["mean"]["movement"] + ref["sd"]["movement"],
-           "brightness": ref["mean"]["brightness"] + ref["sd"]["brightness"]}
+    hot = {k: ref["mean"][k] + ref["sd"][k] for k in ("lift", "movement", "range", "brightness")}
     assert fire_score(hot, ref) > 60
+
+
+def test_a_scale_set_before_range_was_added_still_reads():
+    old = {"mean": {"lift": 4.0, "movement": 13.0, "brightness": 400.0}, "sd": {"lift": 1.0, "movement": 1.0, "brightness": 25.0},
+           "raw_mean": 0.0, "raw_sd": 1.0}
+    assert fire_score({"lift": 5.0, "movement": 14.0, "range": 99.0, "brightness": 425.0}, old) == pytest.approx(60.0)
 
 
 def test_the_hottest_minute_is_found():
@@ -77,19 +91,20 @@ def test_the_hottest_minute_is_found():
 
 
 def test_scorecard_sorts_by_fire_and_shows_the_three_parts():
-    def row(name, lift, move, bright, clicks):
+    def row(name, lift, move, rng, bright, clicks):
+        parts = {"lift": lift, "movement": move, "range": rng, "brightness": bright}
         return {"name": name, "minutes": 5.0, "clicks": clicks, "noise_floor": -80.0, "recorded": "17 Oct 2026",
                 "tone_bands": np.zeros(3), "pitch": 120.0, "pace": 140.0, "pesq": None, "pesq_low": None,
-                "lowest": [], "fire_measures": {"lift": lift, "movement": move, "brightness": bright,
-                                                 "minutes": [{"at": 60.0, "lift": lift, "movement": move, "brightness": bright}]},
+                "lowest": [], "fire_measures": parts | {"minutes": [{"at": 60.0} | parts]},
                 "fire_note": "Fire scale: test."}
-    rows = [row("flat", 3.0, 11.0, 380.0, 0.5), row("fiery", 5.0, 14.0, 440.0, 2.0), row("middling", 4.0, 13.0, 400.0, 1.0)]
+    rows = [row("flat", 3.0, 11.0, 10.0, 380.0, 0.5), row("fiery", 5.0, 14.0, 13.0, 440.0, 2.0),
+            row("middling", 4.0, 13.0, 12.0, 400.0, 1.0)]
     rank_rows(rows)
     add_fire(rows, reference_from([r["fire_measures"] for r in rows]))
     md = scorecard_markdown(rows)
     assert md.index("| fiery |") < md.index("| middling |") < md.index("| flat |")
     head = next(l for l in md.splitlines() if l.startswith("| Recording"))
-    for col in ("Recorded", "Fire", "Lift st", "Movement st/s", "Brightness Hz", "Hottest minutes", "Order"):
+    for col in ("Recorded", "Fire", "Lift st", "Movement st/s", "Range st", "Brightness Hz", "Hottest minutes", "Order"):
         assert col in head
     assert "Fire scale: test." in md
 
@@ -104,11 +119,11 @@ def test_scorecard_command_scores_several_projects_and_fixes_the_scale(tmp_path,
     assert main(["scorecard", str(tmp_path / "calm.toml"), str(tmp_path / "lively.toml"), "-o", str(out),
                  "--calibrate-fire"]) == 0
     ref = json.loads((tmp_path / "fire-reference.json").read_text(encoding="utf-8"))
-    assert ref["recordings"] == 2 and set(ref["mean"]) == {"lift", "movement", "brightness"}
+    assert ref["recordings"] == 2 and set(ref["mean"]) == {"lift", "movement", "range", "brightness"}
     md = out.read_text(encoding="utf-8")
     assert md.index("| lively |") < md.index("| calm |") and "Fire scale: set on" in md
     table = out.with_suffix(".csv").read_text(encoding="utf-8-sig").splitlines()
-    assert table[0].startswith("Recording,Recorded,Minutes,Fire,Lift st,Movement st/s,Brightness Hz")
+    assert table[0].startswith("Recording,Recorded,Minutes,Fire,Lift st,Movement st/s,Range st,Brightness Hz")
     assert [line.split(",")[0] for line in table[1:]] == ["lively", "calm"]
     # the next run reads the saved scale instead of setting a new one
     assert main(["scorecard", str(tmp_path / "calm.toml"), "-o", str(out)]) == 0
