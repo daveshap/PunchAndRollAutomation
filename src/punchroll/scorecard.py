@@ -118,14 +118,16 @@ def fire_reference(rows: list[dict], path: Path | None, calibrate: bool, log=pri
                  "recordings are added; run with --calibrate-fire to fix the scale).")
 
 
-def _timed_words(fin_path: Path) -> list[dict] | None:
-    """The recognizer's words, with their timings, for the finished WAV (or its MP3), if they are cached."""
+def _timed_words(fin_path: Path) -> tuple[list[dict] | None, Path | None]:
+    """The recognizer's words, with their timings, for the finished WAV or its MP3, if they are cached; and the
+    file they were timed on. Measure on that same file: an MP3 can run tens of milliseconds behind its WAV (25 ms
+    here), and a statement's fall is in its last tens of milliseconds."""
     for p in (fin_path, fin_path.with_suffix(".mp3")):
         if p.is_file():
             d = cached_words(p, transcripts_dir())
             if d is not None:
-                return d["words"]
-    return None
+                return d["words"], p
+    return None, None
 
 
 def _finished_text(proj_path: Path, proj: dict, name: str) -> str | None:
@@ -185,9 +187,12 @@ def scorecard(project, listener: bool = False, log=print, reference: Path | None
                 from .clarity import landing_and_reset
                 from .enunciation import confidences
                 row["heard"] = confidences(fin_path, fin, sr, recognizer, transcripts_dir())
-                timed, text = _timed_words(fin_path), _finished_text(proj_path, proj, name)
-                row.update(landing_and_reset(timed, text, fin, sr) if timed and text
-                           else {"landing": float("nan"), "reset": float("nan"), "unfinished": float("nan")})
+                (timed, timed_on), text = _timed_words(fin_path), _finished_text(proj_path, proj, name)
+                if timed and text:
+                    xa, sra = (fin, sr) if timed_on == fin_path else read_mono(timed_on)
+                    row.update(landing_and_reset(timed, text, xa, sra))
+                else:
+                    row.update({"landing": float("nan"), "reset": float("nan"), "unfinished": float("nan")})
             rows.append(row)
             fm = row["fire_measures"]
             log(f"{name}: clicks {row['clicks']:.1f}/min, noise floor {row['noise_floor']:.1f} dB"

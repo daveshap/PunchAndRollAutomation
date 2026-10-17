@@ -77,7 +77,7 @@ def test_scorecard_adds_clarity_and_fixes_its_scale(tmp_path, monkeypatch, capsy
                                                encoding="utf-8")
         heard[name] = (doubting(["the", "of", "and"] * 40, every), w)
     monkeypatch.setattr(en, "confidences", lambda path, x, sr, rec, cache: heard[path.stem][0])
-    monkeypatch.setattr("punchroll.scorecard._timed_words", lambda path: heard[path.stem][1])
+    monkeypatch.setattr("punchroll.scorecard._timed_words", lambda path: (heard[path.stem][1], path))
     out = tmp_path / "card.md"
     assert main(["scorecard", str(tmp_path / "clear.toml"), str(tmp_path / "vague.toml"), "-o", str(out), "--clarity"]) == 0
     md = out.read_text(encoding="utf-8")

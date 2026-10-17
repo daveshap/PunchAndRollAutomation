@@ -108,7 +108,7 @@ Fire rewards energy. Clarity rewards control: every word clearly said, every sta
 - **Landing:** for each statement, which is a sentence of the finished transcript that ends in a full stop, its median pitch minus the low end of its last word (the median of the lower half of that word's voiced frames), divided by the file's pitch range from the 10th to the 90th percentile. The median over the file counts. Skilled readers end statements with large falls, and listeners hear a falling end as confident.
 - **Reset:** the top of the pitch (90th percentile) over the first two words of the next sentence, minus the low end of the sentence before, in the same units. The new sentence starts afresh.
 
-Dividing by the file's own range measures where the pitch moves, not how much it moves, which is fire's business. Pauses are left out on purpose: punchroll sets them in the edit, so they would score the editor and not the reader. Sentence ends come from the punctuation of the finished transcript (`punchroll said build`), matched to the recognizer's word timings for the finished file. A file with no finished transcript gets enunciation only.
+Dividing by the file's own range measures where the pitch moves, not how much it moves, which is fire's business. Pauses are left out on purpose: punchroll sets them in the edit, so they would score the editor and not the reader. Sentence ends come from the punctuation of the finished transcript (`punchroll said build`), matched to the recognizer's word timings for the finished file. A file with no finished transcript gets enunciation only. Landing and reset are measured on the same file as the word timings. Here the MP3s run 25 ms behind their WAVs, and pairing one file's timings with the other's audio moved landings by up to 0.1, because a statement's fall is in its last tens of milliseconds.
 
 What the research says (Claude's reading, 17 Oct 2026):
 
@@ -117,7 +117,8 @@ What the research says (Claude's reading, 17 Oct 2026):
 
 On the 28 recordings of 2 to 16 Oct 2026:
 
-- **The narration he singled out ("labor attrition") was near the top on all three parts:** third for enunciation, about fourth for landing and about third for reset. Only 11 percent of its statements failed to fall, the second fewest.
+- **The narration he singled out ("labor attrition") was second of 28 on clarity:** third for enunciation, fourth for landing and third for reset, against twelfth on fire. Only 11 percent of its statements failed to fall, the second fewest.
+- **Clarity and fire are nearly independent** (correlation −0.23). The Scion read, his benchmark, is the only one near the top of both: third on fire and fourth on clarity.
 - **The fieriest reads landed least.** Piece 8 left 41 percent of its statements up in the air, and piece 4 was lowest.
 
 #### Enunciation
