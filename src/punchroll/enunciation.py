@@ -7,7 +7,7 @@ also measure prosody and enunciation that would be a good measure."
 
 The recognizer that punchroll transcribes with reports a log-probability for every token it hears, and a word's
 probability is the product of its tokens'. Everyday words are those found in at least a third of the reference
-recordings, so names and jargon, which a recognizer doubts whoever says them, drop out. Enunciation is the number of
+recordings, so names and jargon, which a recognizer doubts whoever says them, drop out, and so do number words. Enunciation is the number of
 everyday words per hundred that the recognizer doubts (probability under 0.9): fewer is clearer. On the 28 recordings
 of 2 to 16 Oct 2026 it ran from 4.3 to 7.9, put "labor attrition" (the narration of that film) third, and was
 unrelated to fire (correlation 0.07).
@@ -29,6 +29,12 @@ from .audio import resample
 DOUBT = 0.9                 # a word the recognizer gives less than this probability is doubted
 EVERYDAY_SHARE = 1 / 3      # an everyday word is in at least this share of the reference recordings
 MIN_WORDS = 50              # fewer everyday words than this and the count says nothing
+# Number words don't count: a recognizer is unsure how to write a number ("307,200" or "three hundred seven
+# thousand"), so it doubts them five to ten times as often as other words, however clearly they are said. On the 31
+# recordings of 2 to 17 Oct 2026 that made the score follow the script's share of numbers (correlation 0.64).
+NUMBER_WORDS = frozenset("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen "
+                         "fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy "
+                         "eighty ninety hundred thousand million billion trillion percent point half".split())
 
 
 def norm(text: str) -> str:
@@ -81,12 +87,12 @@ def everyday_words(recordings: list[list[dict]], share: float = EVERYDAY_SHARE) 
     """The words found in at least `share` of these recordings."""
     need = max(1, int(np.ceil(share * len(recordings))))
     count = Counter(w for words in recordings for w in {norm(x["text"]) for x in words} - {""})
-    return sorted(w for w, c in count.items() if c >= need)
+    return sorted(w for w, c in count.items() if c >= need and w not in NUMBER_WORDS)
 
 
 def doubted(words: list[dict], everyday) -> tuple[float, int]:
     """Everyday words per hundred that the recognizer doubts, and how many everyday words were counted."""
-    every = set(everyday)
+    every = set(everyday) - NUMBER_WORDS
     lp = np.array([w["logp"] for w in words if norm(w["text"]) in every])
     if len(lp) < MIN_WORDS:
         return float("nan"), int(len(lp))

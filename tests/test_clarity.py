@@ -39,8 +39,8 @@ def test_landing_grows_with_the_fall_at_each_statement_end():
     flat = cl.landing_and_reset(w, text, x, SR)
     x, w, text = sentences(20, 4.0)
     falling = cl.landing_and_reset(w, text, x, SR)
-    assert falling["statements"] >= 15 and falling["landing"] > flat["landing"] + 0.3
-    assert falling["unfinished"] < 0.2 and falling["reset"] > 0
+    assert falling["statements"] >= 15 and falling["landing"] > flat["landing"] + 2.5   # semitones
+    assert falling["reset"] > flat["reset"] + 2.5
 
 
 def test_too_few_statements_say_nothing():
@@ -81,7 +81,7 @@ def test_scorecard_adds_clarity_and_fixes_its_scale(tmp_path, monkeypatch, capsy
     out = tmp_path / "card.md"
     assert main(["scorecard", str(tmp_path / "clear.toml"), str(tmp_path / "vague.toml"), "-o", str(out), "--clarity"]) == 0
     md = out.read_text(encoding="utf-8")
-    assert "| Clarity | Enunciation /100 | Landing | Reset |" in md and "Clarity scale: set on" in md
+    assert "| Clarity | Enunciation /100 | Landing st | Reset st |" in md and "Clarity scale: set on" in md
     rows = {l.split("|")[1].strip(): [c.strip() for c in l.split("|")] for l in md.splitlines()
             if l.startswith("| clear") or l.startswith("| vague")}
     col = md.splitlines()[[k for k, l in enumerate(md.splitlines()) if l.startswith("| Recording")][0]].split("|")
@@ -90,5 +90,5 @@ def test_scorecard_adds_clarity_and_fixes_its_scale(tmp_path, monkeypatch, capsy
     ref = json.loads((tmp_path / cl.REFERENCE_NAME).read_text(encoding="utf-8"))
     assert ref["everyday"] == ["and", "of", "the"] and set(ref["mean"]) == set(cl.PARTS)
     table = out.with_suffix(".csv").read_text(encoding="utf-8-sig").splitlines()
-    assert "Clarity,Enunciation /100,Landing,Reset" in table[0]
+    assert "Clarity,Enunciation /100,Landing st,Reset st" in table[0]
     capsys.readouterr()

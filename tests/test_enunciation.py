@@ -52,3 +52,11 @@ def test_heard_joins_tokens_into_words_and_adds_their_log_probabilities():
     w = en.heard(np.zeros(16000 * 2, dtype=np.float32), [(0, 16000)], SimpleNamespace(rec=Rec()))
     assert [x["text"] for x in w] == ["the", "clarity"]
     assert abs(w[1]["logp"] - (-0.6)) < 1e-9
+
+
+def test_number_words_never_count():
+    """A recognizer doubts how to write a number, not how it was said: number words leave the everyday words."""
+    recs = [words(["the", "three", "hundred", "percent"])] * 3
+    assert en.everyday_words(recs) == ["the"]
+    w = words(["three"] * 100 + ["the"] * 100, doubted=set(range(100)))
+    assert en.doubted(w, ["the", "three"]) == (0.0, 100)
