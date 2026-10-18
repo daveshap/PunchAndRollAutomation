@@ -196,6 +196,40 @@ def strike_traced(m: MarkedUp, rows: list[dict], pieces) -> list[str]:
     return changes
 
 
+def strike_mouth_noises(m: MarkedUp, pieces, noises: dict) -> list[str]:
+    """Each kept sound that mouth.mouth_noises names a mouth noise, struck with the pauses and clicks touching it.
+
+    A fresh pause of their total length goes after them, so the room is heard there instead and the timeline
+    stays as it was."""
+    shown, n = {}, 0
+    for i, p in enumerate(pieces):
+        if getattr(p, "shown", True):
+            shown[i] = n
+            n += 1
+    changes = []
+    for k, r in sorted(noises.items()):
+        if k not in shown:
+            continue
+        found = m.where(shown[k])
+        if found is None:
+            continue
+        row, i = found
+        stamp, toks = m.rows[row][1], m.rows[row][2]
+        if toks[i].struck:
+            continue
+        lo = hi = i
+        touch = lambda t: t.source is not None and not t.struck and (PAUSE.match(t.text) or _is_click(t.text))
+        while lo - 1 >= 0 and touch(toks[lo - 1]):
+            lo -= 1
+        while hi + 1 < len(toks) and touch(toks[hi + 1]):
+            hi += 1
+        what = toks[i].text
+        gap = _strike_run(toks, lo, hi)
+        changes.append(f"{stamp}  mouth noise {what} struck with the pauses around it (level jumps {r['jagged_db']:.1f} dB, "
+                       f"{r['low']:.0%} under 300 Hz, {r['peak']:.0%} in its loudest 10 ms); fresh pause {gap:.2f} s")
+    return changes
+
+
 def check(m: MarkedUp) -> dict:
     """What is left to judge: short sounds left in, pauses inside a sentence, long kept gaps."""
     clicks, inside, long_gaps = [], [], []

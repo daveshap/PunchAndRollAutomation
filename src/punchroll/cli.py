@@ -322,13 +322,20 @@ def _run(a) -> int:
             print(markfix.check_text(markfix.check(m)))
             return 0
         changes = markfix.strike_short_sounds(m)
-        if a.raw or a.finished:
-            if not (a.raw and a.finished):
-                raise ValueError("--raw and --finished go together")
-            from . import checks
-            pieces: list = []
-            rows = checks.trace_clicks(a.raw, a.finished, load_settings(a.config), a.within, pieces_out=pieces)
-            changes += markfix.strike_traced(m, rows, pieces)
+        if a.finished and not a.raw:
+            raise ValueError("--finished needs --raw, the recording the finished file was cut from")
+        if a.raw:
+            from .mouth import mouth_noises
+            from .pipeline import measure
+            settings = load_settings(a.config)
+            x, sr, _, pieces = measure(a.raw, settings, log=lambda *_: None)
+            changes += markfix.strike_mouth_noises(m, pieces, mouth_noises(x, sr, pieces))
+            del x
+            if a.finished:
+                from . import checks
+                pieces = []
+                rows = checks.trace_clicks(a.raw, a.finished, settings, a.within, pieces_out=pieces)
+                changes += markfix.strike_traced(m, rows, pieces)
         for c in changes:
             print(c)
         print(f"{len(changes)} change(s)" + (", written" if a.write and changes else ""))

@@ -52,6 +52,8 @@ def write_reports(out_dir: Path, name: str, res: dict, audio: str, markup: str, 
         in_mp3 = f", and {mp3} dB in the MP3" if mp3 is not None else ""
         quieter = (f" Noise reduction: the room's noise turned down by {metrics['noise_reduction_db']:g} dB."
                    if metrics.get("noise_reduction_db") else "")
+        if metrics.get("mouth_clicks"):
+            quieter += f" Mouth clicks covered: {metrics['mouth_clicks']}."
         md += ["## ACX check", "",
                "| Measure | Value | ACX range | |", "|---|---|---|---|",
                f"| RMS loudness | {metrics['rms_db']} dB | −23 to −18 dB | {_ok(metrics['rms_ok'])} |",

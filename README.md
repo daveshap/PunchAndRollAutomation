@@ -104,7 +104,7 @@ This writes a float WAV and a source/output map. Use the assembled recording in 
 | `readback EDITED --markup M` | Every word the mark-up kept, checked against the finished file: missing, doubled or returned words, with the nearest join. |
 | `clicks RAW EDITED` | Each click counted in the finished file, traced to the recording and its place in the mark-up. |
 | `lost RAW EDITED` | Stretches cut from the recording that are never said again: asides, slips, or something lost. |
-| `declick MARKUP [--raw RAW --finished EDITED] [--write]` | Clicks struck in the mark-up as docs/checking.md says: a click left in or struck alone, and with the recording and the finished file, each click traced to a kept pause or breath. |
+| `declick MARKUP [--raw RAW [--finished EDITED]] [--write]` | Clicks struck in the mark-up as docs/checking.md says: a click left in or struck alone; with the recording, the kept sounds that are mouth noise rather than breath; and with the finished file too, each click traced to a kept pause or breath. |
 | `markcheck MARKUP` | The mark-up checked against its transcript, and what is left to judge: short sounds, pauses inside a sentence, long gaps. |
 | `said draft/build P.toml` | The finished transcripts. |
 | `said changes P.toml` | Every sentence the reader changed from the text he was given, with a count per recording. |
