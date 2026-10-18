@@ -118,14 +118,16 @@ def fire_reference(rows: list[dict], path: Path | None, calibrate: bool, log=pri
                  "recordings are added; run with --calibrate-fire to fix the scale).")
 
 
-def _timed_words(fin_path: Path) -> list[dict] | None:
-    """The recognizer's words, with their timings, for the finished WAV (or its MP3), if they are cached."""
+def _timed_words(fin_path: Path) -> tuple[list[dict] | None, Path | None]:
+    """The recognizer's words, with their timings, for the finished WAV or its MP3, if they are cached; and the
+    file they were timed on. Measure on that same file: an MP3 can run tens of milliseconds behind its WAV (25 ms
+    here), and a statement's fall is in its last tens of milliseconds."""
     for p in (fin_path, fin_path.with_suffix(".mp3")):
         if p.is_file():
             d = cached_words(p, transcripts_dir())
             if d is not None:
-                return d["words"]
-    return None
+                return d["words"], p
+    return None, None
 
 
 def _finished_text(proj_path: Path, proj: dict, name: str) -> str | None:
@@ -185,9 +187,12 @@ def scorecard(project, listener: bool = False, log=print, reference: Path | None
                 from .clarity import landing_and_reset
                 from .enunciation import confidences
                 row["heard"] = confidences(fin_path, fin, sr, recognizer, transcripts_dir())
-                timed, text = _timed_words(fin_path), _finished_text(proj_path, proj, name)
-                row.update(landing_and_reset(timed, text, fin, sr) if timed and text
-                           else {"landing": float("nan"), "reset": float("nan"), "unfinished": float("nan")})
+                (timed, timed_on), text = _timed_words(fin_path), _finished_text(proj_path, proj, name)
+                if timed and text:
+                    xa, sra = (fin, sr) if timed_on == fin_path else read_mono(timed_on)
+                    row.update(landing_and_reset(timed, text, xa, sra))
+                else:
+                    row.update({"landing": float("nan"), "reset": float("nan")})
             rows.append(row)
             fm = row["fire_measures"]
             log(f"{name}: clicks {row['clicks']:.1f}/min, noise floor {row['noise_floor']:.1f} dB"
@@ -240,7 +245,7 @@ def scorecard_markdown(rows: list[dict]) -> str:
         md += [rows[0]["clarity_note"], ""]
     head = "| Recording |" + (" Recorded |" if dated else "") + " Min |"
     head += " Fire | Lift st | Movement st/s | Range st | Brightness Hz | Hottest minutes |" if fired else ""
-    head += " Clarity | Enunciation /100 | Landing | Reset |" if clear else ""
+    head += " Clarity | Enunciation /100 | Landing st | Reset st |" if clear else ""
     head += " Order | Clicks/min | Noise floor dB | Tone dB | Pitch Hz | Words/min |"
     head += " Listener | Lowest tenth | Lowest 10 s at |" if heard else ""
     md += [head, "|" + "---|" * (head.count("|") - 1)]
@@ -254,8 +259,8 @@ def scorecard_markdown(rows: list[dict]) -> str:
                      f"{r['brightness']:.0f} | {hot} |")
         if clear:
             line += "".join(f" {r[k]:{f}} |" if r[k] == r[k] else " - |"
-                            for k, f in (("clarity", ".0f"), ("enunciation", ".1f"), ("landing", ".2f"),
-                                         ("reset", ".2f")))
+                            for k, f in (("clarity", ".0f"), ("enunciation", ".1f"), ("landing", ".1f"),
+                                         ("reset", ".1f")))
         line += (f" {r['order']:.1f} | {r['clicks']:.1f} | {r['noise_floor']:.1f} | "
                  f"{r['tone']:.1f} | {pitch_} | {pace} |")
         if heard:
@@ -275,8 +280,8 @@ def scorecard_markdown(rows: list[dict]) -> str:
                      "averaged and scaled so the reference set averages 50; it doesn't depend on fire. Enunciation: of "
                      "the everyday words (those in at least a third of the reference recordings, so that names and "
                      "jargon drop out), how many per hundred the speech recognizer doubts; fewer is clearer. Landing: "
-                     "how far a statement's pitch falls at its end, in the file's own pitch ranges. Reset: how far the "
-                     "next sentence starts up again, in the same units. Sentence ends come from the finished "
+                     "how far a statement's pitch falls where the voice stops, in semitones. Reset: how far the "
+                     "next sentence starts up again, in semitones. Sentence ends come from the finished "
                      "transcript; a dash means it has none yet.")
     notes.append("Clicks: mouth clicks alone in pauses. Noise floor: as ACX measures it. Tone: how far the file's balance "
                  "of low, middle and high frequencies is from the middle of the set. Pitch: median over the whole file. "
@@ -296,7 +301,7 @@ def scorecard_csv(rows: list[dict]) -> str:
     clear = bool(rows) and all("clarity" in r for r in rows)
     cols = ["Recording", "Recorded", "Minutes"]
     cols += ["Fire", "Lift st", "Movement st/s", "Range st", "Brightness Hz", "Hottest minutes"] if fired else []
-    cols += ["Clarity", "Enunciation /100", "Landing", "Reset"] if clear else []
+    cols += ["Clarity", "Enunciation /100", "Landing st", "Reset st"] if clear else []
     cols += ["Order", "Clicks/min", "Noise floor dB", "Tone dB", "Pitch Hz", "Words/min"]
     cols += ["Listener", "Lowest tenth", "Lowest 10 s at"] if heard else []
     out = io.StringIO()
@@ -310,7 +315,7 @@ def scorecard_csv(rows: list[dict]) -> str:
                     "; ".join(f"{_clock(t)} ({f:.0f})" for t, f in r["hottest"])]
         if clear:
             row += [round(r[k], n) if r[k] == r[k] else "" for k, n in (("clarity", 1), ("enunciation", 2),
-                                                                     ("landing", 3), ("reset", 3))]
+                                                                     ("landing", 2), ("reset", 2))]
         row += [round(r["order"], 1), round(r["clicks"], 2), round(r["noise_floor"], 1), round(r["tone"], 2),
                 round(r["pitch"], 1) if r["pitch"] is not None else "", round(r["pace"], 1) if r["pace"] is not None else ""]
         if heard:

@@ -10,15 +10,14 @@ Three parts, each a z-score against the reference set; their average is scaled l
 averages 50 and every 10 is a standard deviation:
 
   enunciation  everyday words per hundred that the speech recognizer doubts (enunciation.py); fewer is clearer
-  landing      for each statement (a sentence that ends in a full stop): the sentence's median pitch minus the low end
-               of its last word, divided by the file's pitch range (10th to 90th percentile). The median over the file.
-               A statement that lands falls at its end; skilled readers end statements with large falls, and a falling
-               end is heard as confident.
-  reset        the top of the pitch over the first two words of the next sentence (90th percentile), minus the low end
-               of the sentence before, divided by the range; the median over the file. The new sentence starts afresh.
+  landing      for each statement (a sentence that ends in a full stop), how far the pitch drops where the voice stops:
+               from the top of its last 1.5 s of voice to the bottom of its last 0.3 s, in semitones. The median over
+               the file. Skilled readers end statements with large falls, and a falling end is heard as confident.
+  reset        the top of the first second of the next sentence (90th percentile) minus that bottom, in semitones; the
+               median over the file. The new sentence starts afresh.
 
-Dividing by the file's own range makes landing and reset measures of where the pitch moves, not of how much it
-moves, which is fire's business. Pauses don't count: punchroll sets them in the edit, so they would score the editor.
+Measured this way, landing and reset are unrelated to fire on the 31 recordings of 2 to 17 Oct 2026 (correlations
+-0.01 and -0.20), so they don't measure how lively a read is. Pauses don't count: punchroll sets them in the edit, so they would score the editor.
 Sentence ends come from the punctuation of the finished transcript (punchroll said), matched to the recognizer's word
 timings for the finished file.
 """
@@ -64,46 +63,51 @@ def sentence_ends(words: list[dict], text: str) -> dict[int, str]:
 
 
 def landing_and_reset(words: list[dict], text: str, x: np.ndarray, sr: int) -> dict:
-    """landing and reset (medians, in pitch ranges), unfinished (the share of statements that don't fall), and how
-    many statements and restarts were measured. landing and reset are nan when fewer than MIN_STATEMENTS are."""
+    """landing and reset (medians, in semitones), and how many statements and restarts were measured. landing and
+    reset are nan when fewer than MIN_STATEMENTS statements are measured.
+
+    Each sentence end is taken where his voice stops: the last voiced frame between the start of the sentence's last
+    word and the start of the next word. landing is the drop from the top of the last 1.5 s of voice (90th percentile)
+    to the bottom of its last 0.3 s (10th percentile); reset is the top of the first second of the next sentence minus
+    that bottom. A window tied to the last word's span (the first version) missed the fall in about two thirds of the
+    sentences: the recognizer's end times run into the pause, and a final syllable that trails into creak has no
+    pitch to track, so the window fell back onto the word before, which in an energetic read carries the accent.
+    """
     ends = sentence_ends(words, text)
     _, f0 = track(resample(x, sr, FS) if sr != FS else x)
     st = semitones(f0)
     t = np.arange(len(st)) * 0.01 + 0.02
     voiced = ~np.isnan(st)
-    nan = {"landing": float("nan"), "reset": float("nan"), "unfinished": float("nan"), "statements": 0, "restarts": 0}
+    nan = {"landing": float("nan"), "reset": float("nan"), "statements": 0, "restarts": 0}
     if voiced.sum() < 500 or not ends:
         return nan
-    p10, p90 = np.percentile(st[voiced], [10, 90])
-    span = max(p90 - p10, 0.5)
 
     def frames(t0, t1):
         return st[(t >= t0) & (t <= t1) & voiced]
 
-    def end_of(w):
-        return w.get("end") or w["start"] + 0.3
-
-    falls, lows, prev = [], {}, -1
+    starts = [w["start"] for w in words]
+    falls, lows = [], {}
     for i in sorted(ends):
-        f = frames(words[i]["start"], end_of(words[i]))
-        if len(f) < 5 and i > 0:
-            f = frames(words[i - 1]["start"], end_of(words[i]))
-        if len(f) >= 5:
-            lows[i] = float(np.median(np.sort(f)[:max(1, len(f) // 2)]))
-            sentence = frames(words[prev + 1]["start"], end_of(words[i]))
-            if ends[i] == "." and len(sentence) >= 20:
-                falls.append((float(np.median(sentence)) - lows[i]) / span)
-        prev = i
+        nxt = starts[i + 1] if i + 1 < len(words) else starts[i] + 2.0
+        sel = np.flatnonzero((t >= starts[i]) & (t < nxt) & voiced)
+        if not len(sel):
+            continue
+        e = t[sel[-1]]
+        last, top = frames(e - 0.3, e), frames(e - 1.5, e)
+        if len(last) >= 5 and len(top) >= 20:
+            lows[i] = float(np.percentile(last, 10))
+            if ends[i] == ".":
+                falls.append(float(np.percentile(top, 90)) - lows[i])
     resets = []
     for i, low in lows.items():
-        if i + 2 < len(words):
-            f = frames(words[i + 1]["start"], end_of(words[i + 2]))
-            if len(f) >= 5:
-                resets.append((float(np.percentile(f, 90)) - low) / span)
+        if i + 1 < len(words):
+            f = frames(starts[i + 1], starts[i + 1] + 1.0)
+            if len(f) >= 10:
+                resets.append(float(np.percentile(f, 90)) - low)
     if len(falls) < MIN_STATEMENTS:
         return nan | {"statements": len(falls), "restarts": len(resets)}
     return {"landing": float(np.median(falls)), "reset": float(np.median(resets)) if resets else float("nan"),
-            "unfinished": float(np.mean(np.array(falls) <= 0)), "statements": len(falls), "restarts": len(resets)}
+            "statements": len(falls), "restarts": len(resets)}
 
 
 def _raw(m: dict, ref: dict) -> float:

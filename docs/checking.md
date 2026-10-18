@@ -105,20 +105,27 @@ Fire rewards energy. Clarity rewards control: every word clearly said, every sta
 `--clarity` puts three parts on one scale, each a z-score against the reference set, averaged and scaled like fire's. The scale and its everyday words are in `clarity-reference.json` beside the first project file. The first run with `--clarity` sets it from the recordings given, and `--calibrate-clarity` sets it again.
 
 - **Enunciation:** below.
-- **Landing:** for each statement, which is a sentence of the finished transcript that ends in a full stop, its median pitch minus the low end of its last word (the median of the lower half of that word's voiced frames), divided by the file's pitch range from the 10th to the 90th percentile. The median over the file counts. Skilled readers end statements with large falls, and listeners hear a falling end as confident.
-- **Reset:** the top of the pitch (90th percentile) over the first two words of the next sentence, minus the low end of the sentence before, in the same units. The new sentence starts afresh.
+- **Landing:** for each statement, which is a sentence of the finished transcript that ends in a full stop, how far the pitch drops where his voice stops. It is measured from the top of the last 1.5 s of voice (90th percentile) to the bottom of the last 0.3 s (10th percentile), in semitones. The median over the file counts. Skilled readers end statements with large falls, and listeners hear a falling end as confident.
+- **Reset:** the top of the pitch (90th percentile) over the first second of the next sentence, minus that bottom, in semitones. The new sentence starts afresh.
 
-Dividing by the file's own range measures where the pitch moves, not how much it moves, which is fire's business. Pauses are left out on purpose: punchroll sets them in the edit, so they would score the editor and not the reader. Sentence ends come from the punctuation of the finished transcript (`punchroll said build`), matched to the recognizer's word timings for the finished file. A file with no finished transcript gets enunciation only.
+The end of a sentence is the last voiced frame between the start of its last word and the start of the next word. Pauses are left out on purpose: punchroll sets them in the edit, so they would score the editor and not the reader. Sentence ends come from the punctuation of the finished transcript (`punchroll said build`), matched to the recognizer's word timings for the finished file. A file with no finished transcript gets enunciation only. Landing and reset are measured on the same file as the word timings, because here the MP3s run 25 ms behind their WAVs.
+
+The first version, 17 Oct 2026, put "The Automation Cliff" last of 31. David: "it's actually pretty clear. That means there's something wrong with the method." Two faults, both against energetic reads, were found and fixed the same day:
+
+- **Number words in enunciation.** A recognizer is unsure how to write a number, so it doubted number words five to ten times as often as other words. The score followed the script's share of numbers (correlation 0.64), and "The Automation Cliff" was the second most number-heavy script. Number words are now left out.
+- **The landing window.** The first version took the low end from the span of the last word. In about two thirds of the sentences that span held too little pitch, because the recognizer's end times run into the pause and a final syllable trails into creak. So it fell back onto the word before, which in an energetic read carries the accent, and it read some ends as rises of 6 to 11 semitones. The window now ends where the voice stops.
+
+With both fixes, "The Automation Cliff" moved from 31st to 16th and "Neural Networks Are Already Clean" from 6th to 9th, matching his ear ("already clean definitely is sharper and more... precise"). "Labor attrition" moved from 2nd to 10th, so the first version flattered the sober reads. Clarity stays independent of fire (correlation −0.17).
 
 What the research says (Claude's reading, 17 Oct 2026):
 
 - **The best-evidenced cues to clear, confident narration that a finished file keeps** are articulation (vowel space), a decisive fall at the end of statements (Vaughan-Johnston et al. 2024; Goupil et al. 2021; skilled readers in Schwanenflugel's reading-prosody work), and marking sentence boundaries with a pitch reset and final lengthening (Yang et al. 2014).
 - **Measures not used.** The classic clear-speech cues of energy at 1 to 3 kHz and envelope modulation depth move with the microphone, the noise reduction and the compressor. Pause measures score the edit. Vowel formants are left for later; they need a pronouncing dictionary and LPC tracking.
 
-On the 28 recordings of 2 to 16 Oct 2026:
+On the 31 recordings of 2 to 17 Oct 2026, with the second version:
 
-- **The narration he singled out ("labor attrition") was near the top on all three parts:** third for enunciation, about fourth for landing and about third for reset. Only 11 percent of its statements failed to fall, the second fewest.
-- **The fieriest reads landed least.** Piece 8 left 41 percent of its statements up in the air, and piece 4 was lowest.
+- **The best of both,** ranked by the weaker of the two scores: "derived vs essential demand" (fire 60, clarity 58), the Scion read (61, 57), "Neural Networks Are Already Clean" (58, 56), piece 7 (75, 53), "You Are the Next Horse" (67, 51) and "The Automation Cliff" (70, 50). These are the 15 Oct session and the session of 17 Oct, which was recorded after the gym and singing in the shower.
+- **His plan for the voice clone,** 17 Oct 2026: "one half of the training run will be the top Fire scores, and the other will be the top Clarity scores", with "the pieces that get the best of both" at its core.
 
 #### Enunciation
 
