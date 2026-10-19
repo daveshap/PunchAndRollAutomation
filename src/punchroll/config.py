@@ -34,6 +34,7 @@ class MasterSettings:
     noise_sensitivity: float = 6.0     # how far over the noise a sound must rise to be left alone (Audacity's scale)
     noise_smoothing: int = 3           # bands on either side that share each band's gain (Audacity's frequency smoothing)
     denoise_above_db: float = -62.0    # "auto" steps in when the floor would be above this
+    mouth_clicks: bool = True          # cover the mouth clicks outside the words (mouth.py); the timeline doesn't move
     wav_bits: int = 0                 # WAV master: 0 = the recording's own depth (16 to 24 bits), or 16, or 24
     mp3_kbps: int = 192                # ACX: 192 kbps or higher, constant bit rate
     mp3_sample_rate: int = 44100       # ACX: 44.1 kHz

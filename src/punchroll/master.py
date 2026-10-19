@@ -1,5 +1,5 @@
-"""Mastering to ACX specs: noise reduction where it is asked for or needed, high-pass, gentle
-compression, a look-ahead limiter, and loudness.
+"""Mastering to ACX specs: noise reduction where it is asked for or needed, mouth clicks covered,
+high-pass, gentle compression, a look-ahead limiter, and loudness.
 
 Pure numpy/scipy, so nothing here adds a copyleft dependency.
 
@@ -15,6 +15,7 @@ from scipy.signal import butter, get_window, istft, sosfilt, stft
 
 from .audio import BLOCK, frame_db, noise_floor_db, rms_db, true_abs, true_peak_db
 from .config import MasterSettings
+from .mouth import repair_clicks
 
 
 def _limit(y, mag, gain, ceiling_db, sr, out=None, ms=6, block=1 << 20) -> float:
@@ -230,6 +231,10 @@ def master(y: np.ndarray, sr: int, ms: MasterSettings, log=print):
     if mode == "on":                           # ahead of the compressor, which would lift the noise in every pause
         log(f"  turning the room's noise down by {ms.noise_reduction_db:g} dB")
         reduced = quieten(y)
+    covered = 0
+    if ms.mouth_clicks:                        # after noise reduction, which leaves clicks standing out of a quieter pause
+        covered = sum(c["repaired"] for c in repair_clicks(y, sr))
+        log(f"  {covered} mouth click(s) covered")
     z = board(y)
     if mode == "auto":
         floor = noise_floor_db(z, sr) + ms.rms_db - rms_db(z)      # where the noise floor will sit once the level is set
@@ -242,7 +247,8 @@ def master(y: np.ndarray, sr: int, ms: MasterSettings, log=print):
     del y
     out, gain = _level(z, sr, ms)
     del z
-    return out, acx_metrics(out, sr) | {"gain_db": round(20 * np.log10(gain * pre), 1), "noise_reduction_db": reduced}
+    return out, acx_metrics(out, sr) | {"gain_db": round(20 * np.log10(gain * pre), 1), "noise_reduction_db": reduced,
+                                        "mouth_clicks": covered}
 
 
 def acx_metrics(y: np.ndarray, sr: int) -> dict:

@@ -66,12 +66,15 @@ The default chain is:
 
 1. Normalize the working signal to -22 dB RMS.
 2. Apply profile-based noise reduction when selected.
-3. High-pass at 70 Hz.
-4. Compress at 2:1 with a -26 dB threshold.
-5. Limit to -3.5 dB true peak while targeting -20 dB RMS.
-6. Export WAV and 44.1 kHz mono 192 kbps CBR MP3; decode and measure the encoded MP3.
+3. Cover the mouth clicks outside the words (`mouth_clicks`, on by default).
+4. High-pass at 70 Hz.
+5. Compress at 2:1 with a -26 dB threshold.
+6. Limit to -3.5 dB true peak while targeting -20 dB RMS.
+7. Export WAV and 44.1 kHz mono 192 kbps CBR MP3; decode and measure the encoded MP3.
 
 The noise profile comes from quiet passages. Reduction operates across the recording, with attack, release and frequency smoothing to maintain continuous room sound. The three controls correspond to Audacity's noise reduction amount, sensitivity and smoothing. The low-frequency bands removed by the high-pass filter are excluded from smoothing into the voice.
+
+**Mouth clicks.** A mouth click is a spike of a few milliseconds: the lips or the tongue parting before a breath, saliva, a swallow. Noise reduction leaves it alone and makes the pause around it quieter, so it stands out in a clean master, and the transcript can't show it: a click of 2 ms averages into its 10 ms step as quiet, and one with no quiet before the next word is measured as part of that word. So the master finds each one by the audio alone (`mouth.py`): a spike in the high band that jumps 15 dB or more over the 40 ms around it, is no wider than 4 ms, and dies at once, with the level 15 dB under its peak over the 3 to 20 ms on both sides (25 dB within 120 ms after the voice or 40 ms before it). That last test is what tells a click from a consonant: a "t", "k" or "p" that is let go is followed by 10 to 50 ms of breathy noise, and a fricative is noise from the start. Nothing inside the voice is touched. Each click is covered with the few milliseconds of sound just beside it (the breath or the room it sat in, from whichever side holds no other click), faded in and out at equal power, so no sample moves and no hole is left; then the search runs again, up to three passes, because in a run of wet clicks a smaller one stands out once the louder one is gone. The report gives the count. On "The Automation Cliff" (18 Oct 2026) it covered 493 clicks, and the clicks that the scorecard counts in pauses fell from 1.8 to 0.7 a minute, with every kept word as it was.
 
 Select `noise_reduction = "on"`, `"off"` or `"auto"` and adjust the amount for the recording. Automatic mode uses the configured projected noise floor. For a recording made with the microphone's own high-pass filter switched off, `mic_filter_hz` adds a second-order high-pass ahead of everything else so its low end matches the rest; give that recording its own settings file with `config` in its project entry. The WAV uses the source bit depth by default, with dither for 16-bit export. All settings are in [examples/settings.toml](../examples/settings.toml).
 
