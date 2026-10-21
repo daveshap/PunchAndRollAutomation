@@ -66,7 +66,7 @@ Score the finished product, never the raw recording. David, 14 Oct 2026: "you sh
 | Range st | How far the pitch swings: from its 10th to its 90th percentile while voiced, in semitones. |
 | Brightness Hz | Centre of mass of the voice's spectrum up to 8 kHz, on the louder half of the voiced frames. |
 | Hottest minutes | The three minutes of the file with the most fire: where each starts, and its fire. |
-| Clarity | With `--clarity`: enunciation, landing and reset on one scale. As with fire, 50 is the reference set's average and every 10 a standard deviation. |
+| Composure | With `--composure` (first called clarity): enunciation, landing and reset on one scale. As with fire, 50 is the reference set's average and every 10 a standard deviation. |
 | Enunciation /100 | Everyday words per hundred that the speech recognizer doubts. Fewer is clearer. |
 | Landing | How far a statement's pitch falls at its end, in the file's own pitch ranges (median). |
 | Reset | How far the next sentence starts up again, in the same units (median). |
@@ -98,11 +98,13 @@ Fire combines the four parts with equal weight, so it rewards a warmed-up, anima
 - **Any recording can be scored on the same scale** with `punchroll fire FILES` (run it in the folder that holds `fire-reference.json`, or name the file with `--reference`). The warm-up experiment uses it on a one-minute probe read three times a session: cold, after the warm-up, and after the last piece. The text is the same each time, so only the reader's state changes.
 - **The scale is the speaker's own.** `--calibrate-fire` sets it from the recordings given (`fire-reference.json`, beside the first project file). Without the file, the score is relative to whatever set is scored and moves as recordings are added. Recalibrate only on purpose: every number in the earlier reports is on the old scale.
 
-### Clarity
+### Composure
 
-Fire rewards energy. Clarity rewards control: every word clearly said, every statement landed, and every new sentence started afresh. David, 17 Oct 2026, of the narration of "How Jobs Actually Disappear", which had scored an average 50 on fire: "a sober, self-possessed clarity with still really good prosody", and "exactly the kind of cadence/prosody for my audiobook too".
+First called clarity. David renamed it on 21 Oct 2026, after his most energetic read, "Anthropic's Five Percent", scored 34 on it: "let's change that composite to composure, which really is the parity of fire. They are almost orthogonal. where fire measures things like dynamic range, composure measures the things we care about for that utmost clarity."
 
-`--clarity` puts three parts on one scale, each a z-score against the reference set, averaged and scaled like fire's. The scale and its everyday words are in `clarity-reference.json` beside the first project file. The first run with `--clarity` sets it from the recordings given, and `--calibrate-clarity` sets it again.
+Fire rewards energy. Composure rewards control: every word clearly said, every statement landed, and every new sentence started afresh. David, 17 Oct 2026, of the narration of "How Jobs Actually Disappear", which had scored an average 50 on fire: "a sober, self-possessed clarity with still really good prosody", and "exactly the kind of cadence/prosody for my audiobook too".
+
+`--composure` puts three parts on one scale, each a z-score against the reference set, averaged and scaled like fire's. The scale and its everyday words are in `clarity-reference.json` beside the first project file. The first run with `--composure` sets it from the recordings given, and `--calibrate-composure` sets it again. The old flags, `--clarity` and `--calibrate-clarity`, still work, and the scale file keeps its first name.
 
 - **Enunciation:** below.
 - **Landing:** for each statement, which is a sentence of the finished transcript that ends in a full stop, how far the pitch drops where his voice stops. It is measured from the top of the last 1.5 s of voice (90th percentile) to the bottom of the last 0.3 s (10th percentile), in semitones. The median over the file counts. Skilled readers end statements with large falls, and listeners hear a falling end as confident.
@@ -135,7 +137,7 @@ Enunciation asks a machine listener: the recognizer that transcribes the recordi
 
 - **Only everyday words count.** These are the words found in at least a third of the reference recordings, 293 words for the 28 recordings of 2 to 16 Oct 2026, so names and jargon, which a recognizer doubts whoever says them, drop out. Each recording has about 600 to 1,300 of them.
 - **A word is doubted** when the recognizer gives it a probability under 0.9. The score is the number of doubted words per hundred everyday words.
-- **The word list is fixed** with the clarity scale in `clarity-reference.json`, so that later recordings are counted on the same words.
+- **The word list is fixed** with the composure scale in `clarity-reference.json`, so that later recordings are counted on the same words.
 - **The recognizer's word confidences are cached** with the transcripts, so only new files take the extra 30 seconds or so.
 
 On those 28 recordings it ran from 4.3 to 7.9 doubted words per hundred.

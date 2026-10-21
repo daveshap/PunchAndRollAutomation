@@ -95,11 +95,11 @@ def main(argv=None) -> int:
                    help="the fire scale file (default: fire-reference.json beside the first project file)")
     p.add_argument("--calibrate-fire", action="store_true",
                    help="set the fire scale from these recordings and save it to the fire scale file")
-    p.add_argument("--clarity", "--enunciation", action="store_true", dest="clarity",
-                   help="add clarity: enunciation (the everyday words a speech recognizer doubts; about 30 s a file "
-                        "the first time, cached after that), landing and reset, on one scale")
-    p.add_argument("--calibrate-clarity", action="store_true",
-                   help="set the clarity scale and its everyday words from these recordings and save them "
+    p.add_argument("--composure", "--clarity", "--enunciation", action="store_true", dest="clarity",
+                   help="add composure (first called clarity): enunciation (the everyday words a speech recognizer "
+                        "doubts; about 30 s a file the first time, cached after that), landing and reset, on one scale")
+    p.add_argument("--calibrate-composure", "--calibrate-clarity", action="store_true", dest="calibrate_clarity",
+                   help="set the composure scale and its everyday words from these recordings and save them "
                         "(clarity-reference.json beside the first project file)")
 
     p = sub.add_parser("fire", help="any recordings, such as warm-up probe reads, on the saved fire scale")
