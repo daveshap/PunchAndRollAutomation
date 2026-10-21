@@ -15,8 +15,10 @@ Columns:
   range        how far the pitch swings: 10th to 90th percentile while voiced, semitones
   brightness   centre of mass of the voice's spectrum up to 8 kHz, Hz
   hottest      the minutes of the file with the most fire, with their fire
-  clarity      with --clarity: enunciation, landing and reset on one scale like fire's (clarity.py). David, 17 Oct
-               2026, on enunciation: "for most listeners, particularly for audiobooks, that is the entire job".
+  composure    with --composure: enunciation, landing and reset on one scale like fire's (clarity.py; first called
+               clarity). David, 17 Oct 2026, on enunciation: "for most listeners, particularly for audiobooks, that
+               is the entire job". Renamed on 21 Oct 2026: "let's change that composite to composure, which really
+               is the parity of fire."
   enunciation  everyday words per hundred that the speech recognizer doubts; fewer is clearer (enunciation.py)
   landing      how far each statement falls at its end, in the file's pitch ranges (median)
   reset        how far the next sentence starts up again, in the file's pitch ranges (median)
@@ -245,7 +247,7 @@ def scorecard_markdown(rows: list[dict]) -> str:
         md += [rows[0]["clarity_note"], ""]
     head = "| Recording |" + (" Recorded |" if dated else "") + " Min |"
     head += " Fire | Lift st | Movement st/s | Range st | Brightness Hz | Hottest minutes |" if fired else ""
-    head += " Clarity | Enunciation /100 | Landing st | Reset st |" if clear else ""
+    head += " Composure | Enunciation /100 | Landing st | Reset st |" if clear else ""
     head += " Order | Clicks/min | Noise floor dB | Tone dB | Pitch Hz | Words/min |"
     head += " Listener | Lowest tenth | Lowest 10 s at |" if heard else ""
     md += [head, "|" + "---|" * (head.count("|") - 1)]
@@ -276,7 +278,7 @@ def scorecard_markdown(rows: list[dict]) -> str:
                      "spectrum up to 8 kHz, which also moves with microphone placement. Hottest minutes: where each "
                      "minute starts, with its fire.")
     if clear:
-        notes.append("Clarity: enunciation, landing and reset, each in standard deviations from the reference set, "
+        notes.append("Composure: enunciation, landing and reset, each in standard deviations from the reference set, "
                      "averaged and scaled so the reference set averages 50; it doesn't depend on fire. Enunciation: of "
                      "the everyday words (those in at least a third of the reference recordings, so that names and "
                      "jargon drop out), how many per hundred the speech recognizer doubts; fewer is clearer. Landing: "
@@ -301,7 +303,7 @@ def scorecard_csv(rows: list[dict]) -> str:
     clear = bool(rows) and all("clarity" in r for r in rows)
     cols = ["Recording", "Recorded", "Minutes"]
     cols += ["Fire", "Lift st", "Movement st/s", "Range st", "Brightness Hz", "Hottest minutes"] if fired else []
-    cols += ["Clarity", "Enunciation /100", "Landing st", "Reset st"] if clear else []
+    cols += ["Composure", "Enunciation /100", "Landing st", "Reset st"] if clear else []
     cols += ["Order", "Clicks/min", "Noise floor dB", "Tone dB", "Pitch Hz", "Words/min"]
     cols += ["Listener", "Lowest tenth", "Lowest 10 s at"] if heard else []
     out = io.StringIO()

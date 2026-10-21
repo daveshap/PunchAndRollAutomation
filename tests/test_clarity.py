@@ -79,16 +79,16 @@ def test_scorecard_adds_clarity_and_fixes_its_scale(tmp_path, monkeypatch, capsy
     monkeypatch.setattr(en, "confidences", lambda path, x, sr, rec, cache: heard[path.stem][0])
     monkeypatch.setattr("punchroll.scorecard._timed_words", lambda path: (heard[path.stem][1], path))
     out = tmp_path / "card.md"
-    assert main(["scorecard", str(tmp_path / "clear.toml"), str(tmp_path / "vague.toml"), "-o", str(out), "--clarity"]) == 0
+    assert main(["scorecard", str(tmp_path / "clear.toml"), str(tmp_path / "vague.toml"), "-o", str(out), "--composure"]) == 0
     md = out.read_text(encoding="utf-8")
-    assert "| Clarity | Enunciation /100 | Landing st | Reset st |" in md and "Clarity scale: set on" in md
+    assert "| Composure | Enunciation /100 | Landing st | Reset st |" in md and "Composure scale: set on" in md
     rows = {l.split("|")[1].strip(): [c.strip() for c in l.split("|")] for l in md.splitlines()
             if l.startswith("| clear") or l.startswith("| vague")}
     col = md.splitlines()[[k for k, l in enumerate(md.splitlines()) if l.startswith("| Recording")][0]].split("|")
-    c = [x.strip() for x in col].index("Clarity")
+    c = [x.strip() for x in col].index("Composure")
     assert float(rows["clear"][c]) > float(rows["vague"][c])
     ref = json.loads((tmp_path / cl.REFERENCE_NAME).read_text(encoding="utf-8"))
     assert ref["everyday"] == ["and", "of", "the"] and set(ref["mean"]) == set(cl.PARTS)
     table = out.with_suffix(".csv").read_text(encoding="utf-8-sig").splitlines()
-    assert "Clarity,Enunciation /100,Landing st,Reset st" in table[0]
+    assert "Composure,Enunciation /100,Landing st,Reset st" in table[0]
     capsys.readouterr()

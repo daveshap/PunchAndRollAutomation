@@ -1,4 +1,9 @@
-"""Clarity: enunciation, how each statement lands, and how the next one starts, on one scale.
+"""Composure: enunciation, how each statement lands, and how the next one starts, on one scale.
+
+First called clarity. David renamed it on 21 Oct 2026, after his most energetic read ("Anthropic's Five Percent")
+scored 34 on it: "let's change that composite to composure, which really is the parity of fire. They are almost
+orthogonal. where fire measures things like dynamic range, composure measures the things we care about for that
+utmost clarity." The code keeps the name clarity, and the scale file keeps its name, clarity-reference.json.
 
 David, 17 Oct 2026, on the narration of "How Jobs Actually Disappear", which scored an average 50 on fire: "a sober,
 self-possessed clarity with still really good prosody", "exactly the kind of cadence/prosody for my audiobook too",
@@ -140,7 +145,7 @@ def reference(rows: list[dict], path: Path | None, calibrate: bool, log=print) -
     """
     if path is not None and Path(path).is_file() and not calibrate:
         ref = json.loads(Path(path).read_text(encoding="utf-8"))
-        return ref, f"Clarity scale: {ref.get('note', 'from ' + Path(path).name)} ({Path(path).name})."
+        return ref, f"Composure scale: {ref.get('note', 'from ' + Path(path).name)} ({Path(path).name})."
     from .enunciation import doubted
     words = everyday_words([r["heard"] for r in rows])
     measures = [{"enunciation": doubted(r["heard"], words)[0], "landing": r.get("landing", np.nan),
@@ -150,5 +155,5 @@ def reference(rows: list[dict], path: Path | None, calibrate: bool, log=print) -
                                                f"with the {len(words)} words found in at least a third of them")
     if path is not None:
         Path(path).write_text(json.dumps(ref, indent=1), encoding="utf-8")
-        log(f"clarity scale saved to {path}")
-    return ref, f"Clarity scale: {ref['note']}."
+        log(f"composure scale saved to {path}")
+    return ref, f"Composure scale: {ref['note']}."
