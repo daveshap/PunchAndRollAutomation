@@ -15,6 +15,7 @@
   punchroll declick MARKUP             strike clicks in a mark-up by the method; with --raw and --finished, the traced ones too
   punchroll markcheck MARKUP           the mark-up still matches its transcript; short sounds, pauses and gaps left to judge
   punchroll lost RAW EDITED            words cut from a recording that are never said again
+  punchroll outtakes RAW LIST -o DIR   cut the listed struck takes from the raw recording, as clips for a blooper reel
   punchroll said draft|build P.toml    the finished transcripts: what the reader said on each recording
   punchroll said changes P.toml        every sentence the reader changed from the text he was given
   punchroll picture FILE --at 3:08     a spectrogram of a passage, as a PNG
@@ -136,6 +137,12 @@ def main(argv=None) -> int:
     p.add_argument("finished", help="the finished MP3 or WAV")
     p.add_argument("--config", help="TOML file overriding the default settings")
 
+    p = sub.add_parser("outtakes", help="cut the struck takes listed at mark-up from the raw recording, as clips for a blooper reel")
+    p.add_argument("raw", help="the raw recording")
+    p.add_argument("listing", help="the mark-up editor's outtakes list (JSON), as docs/marking-up.md describes")
+    p.add_argument("-o", "--out", required=True, help="folder for the clips and outtakes.md (nothing in it is overwritten)")
+    p.add_argument("--title", help="the recording's name in outtakes.md (default: the raw file's name)")
+
     p = sub.add_parser("said", help="the finished transcripts: what the reader said on each finished recording")
     p.add_argument("step", choices=("draft", "build", "changes"), help="draft: list where the words differ from the "
                    "reference; build: write the transcripts once every difference has a decision; changes: every "
@@ -162,7 +169,7 @@ def main(argv=None) -> int:
             pass
     try:
         return _run(a)
-    except (ValueError, FileNotFoundError, RuntimeError) as e:
+    except (ValueError, FileNotFoundError, FileExistsError, RuntimeError) as e:
         print(f"punchroll: {e}", file=sys.stderr)
         return 2
     except BrokenPipeError:
@@ -353,6 +360,12 @@ def _run(a) -> int:
             print(f"{left} difference(s) to decide" if left else "Every difference has a decision: run `punchroll said build`.")
         else:
             said.build(a.project, a.only, rec)
+        return 0
+
+    if a.cmd == "outtakes":
+        from .outtakes import clips
+        written = clips(a.raw, a.listing, a.out, a.title)
+        print(f"{len(written)} clips and outtakes.md -> {a.out}")
         return 0
 
     if a.cmd == "picture":
