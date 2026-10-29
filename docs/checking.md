@@ -21,6 +21,8 @@ When a manuscript is available, `verify` lists the full sentence and location of
 
 `readback` sets the words the mark-up kept beside the recognizer's words for the finished file. Each word kept should be there once, in order, and nothing struck should be back. A difference marked "spelling only" is the recognizer writing the same word two ways ("EU V" and "EUV"); a different word heard in the same place is usually the recognizer too, and is worth a listen when it falls near a join. A word missing at a join means the cut clipped it.
 
+Read-back can't see everything at a join. When the mouth-noise strikes of 21 Oct 2026 took out real speech, read-back showed some of it only as a recognizer spelling, or not at all. So, after any `declick --raw` round, check every read-back difference that falls within a second of a join: transcribe an 8 s excerpt around it, and set it beside the same moment in the raw recording and in the previous master. Joins are in the finished file's `.edit.json` (`kept`, `edl`, raw time against finished time).
+
 ### Clicks left in a finished file
 
 `clicks` lists every click the scorecard counts and traces each one to the recording and to its place in the mark-up: inside a pause, inside a sound, or inside a word.
@@ -31,6 +33,8 @@ When a manuscript is available, `verify` lists the full sentence and location of
 - A click inside a word's span (a lip smack at the end of "them") can't be cut without cutting into the word.
 
 `declick` makes these strikes in the mark-up: `punchroll declick markup/ch01.md --raw raw/ch01.wav --finished edited/ch01.wav --write`. Without `--raw` and `--finished` it rewrites only what the mark-up itself shows: a click left in, or a click struck alone with its pauses kept. With `--raw`, it also measures every kept sound longer than a click, with that sound's clicks covered first, and strikes the mouth noises with the pauses touching them, writing a fresh pause of their total length so the timeline stays as it was. A breath is moving air, noise that swells and fades: the steps of its 5 ms level vary by about 1.5 to 2.5 dB. A swallow, a smack or a run of wet clicks jumps about (more than 4 dB), sits low (more than half its energy under 300 Hz, a gulp), or puts more than 40% of its energy into one 10 ms burst. On "The Automation Cliff" that test named exactly the three kept sounds that were mouth noise (a gulp, a "tch" and a wet run) and none of its 47 breaths. Pauses written in by hand are never struck. Then cut again and run `clicks` again: taking out one click can let the detector count another that was below its threshold beside it. Repeat until no click is left in a pause or a sound, which took one to three rounds on the recordings of 15 Oct 2026, and read the whole list each time, not only its end. Read what `--raw` strikes, too: on "the real fourth sector" (25 Oct 2026) it twice struck a `{sound 0.87 +0}` after "45%" that recognition of the raw showed was the word "percent". A loud kept sound against a word is usually speech the recognizer missed: restore it, and mark it kept with a comment in the mark-up.
+
+The numbers from the reprocess of all 33 recordings, 21 Oct 2026: `--raw` struck speech that the recognizer had logged as a `{sound}`, because a consonant burst, or a word it can't spell, passes the mouth-noise tests. It struck letters he spelled out ("fired on the letters I-Y" in "Neural Networks Are Already Clean", +5 dB), a surname ("Maurice Chang", piece 14, −2 dB) and the "sk" of "Ask" (piece 4, −2 dB). The mark-up of 15 Oct had already done the same to the end of "To" (chapter 1, part 2, −10 dB). Mouth noises sit at −21 to −40 dB with most of their energy under 300 Hz. So after each `declick --raw`, list every struck sound louder than about −15 dB and read it in its line before cutting.
 
 ### Lost words
 
@@ -150,6 +154,12 @@ Cautions:
 
 - **Each count is a sample of a few hundred words**, so differences under about one word per hundred are within noise.
 - **The recognizer also doubts fast or run-together speech and unusual phrasing**, so the material still counts for something. Compare recordings of like material where you can.
+
+**Where it still falls short (23 Oct 2026).** After pieces 21 and 22 were scored, David, on piece 21 ("The Case for Optimism, Tested", composure 38): "the optimism tested one is certainly composed enough to pass muster. I'm still dubious of this metric to be fair" and "if this instrument puts something that is actually pretty darn clear and well read near the bottom, it's a broken instrument still." Two of its three parts turn on how far a statement's end falls, which is a matter of style as well as control. So read composure beside fire and his ear, and never alone. His recordings have been chosen with fire as "the prime determinant", for instance for the voice clone's training set (`C:\ProfessionalVoiceClone\training-set.md`).
+
+- **Landing and reset need at least 15 statements** (`clarity.MIN_STATEMENTS`, about two and a half to three minutes of reading). On a shorter file, composure is left blank: piece 3 had 14.
+
+**Scoring a few new recordings on the fixed scales.** `scorecard` looks for `fire-reference.json` and `clarity-reference.json` beside the first project file. `--fire-reference` can point at another fire scale, but there is no flag for the composure scale. A project file elsewhere that lists only the new recordings would therefore set a new composure scale from those few. To score a few, either list them in a project file kept in the same folder as the scale files, or call `scorecard()` from Python with `reference=` and `clarity_reference=` pointing at the scale files. Both leave the scales as they are (this is how pieces 21 and 22 were placed among the others on 23 Oct 2026).
 
 ### Trained listener
 

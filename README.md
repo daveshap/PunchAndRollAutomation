@@ -96,6 +96,16 @@ The order Claude follows for each new recording of David's, run from the folder 
 9. `scorecard` on every finished recording, with `--listener --composure`.
 10. The ledger's status line says what was done, with what was run and on which file.
 
+Traps met along the way (14 to 23 Oct 2026, the thread that edited his recordings then):
+
+- **Always `--only`.** A project file is an input to every finished file, and render versions change. A plain `batch` re-renders or re-queues every master older than its inputs. So edit the project file before the last cuts, not after.
+- **`said build` without `--only`** also rewrites `All recordings.md`; with `--only` it writes just the one transcript. A re-master renumbers the differences; `said draft` carries the decisions over by what they say, but a new spelling needs one more decision before `build` runs.
+- **A doubtful word:** the recognizer's timed words are cached in `%LOCALAPPDATA%\punchroll\transcripts\<stem>-<key>.words.json`. Set them beside the raw WAV to settle a spot; in piece 20, "in the world. in the world." kept the second, because the first trailed off to −60 to −80 dB. When the finished file's recognizer mishears a word next to a cut, check in its `.edit.json` that the word sits well inside a kept range before suspecting the cut.
+- **Coughs** show as loud sounds (+2 to +11 dB) between takes; strike them with their takes.
+- **Recording gain.** Don't advise him to change his gain because of a raw-against-finished comparison: mastering sets every file to −20 dB RMS. He pushed back on 14 Oct ("did you not normalize the volume?").
+- **The microphone's high-pass filter.** Pieces 14 to 16 were recorded with it off: 7 to 8 dB more rumble below 60 Hz in the pauses. They have their own settings (`mic_filter_hz = 100`, a 2nd-order high-pass first in the chain) to match the others. The tone measure starts at the 125 Hz octave and looks at speech only, so measure the low end in the pauses band by band (20 to 60, 60 to 100, 100 to 200 Hz).
+- **On his PC,** a file-protection hook blocks a shell `>` redirect in any command that names his Documents folder (his rule: nothing there is deleted, moved, renamed or overwritten without a copy in `audio-backups`). Run the checks from a script that writes its logs elsewhere.
+
 ## Pickups and alternate recordings
 
 Claude can select passages across recordings with an [assembly plan](examples/assembly.json): source files, time ranges, order, crossfades and optional level matching.
