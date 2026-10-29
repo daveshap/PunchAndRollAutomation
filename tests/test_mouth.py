@@ -128,3 +128,19 @@ def test_a_mouth_noise_is_struck_with_its_pauses_and_the_timeline_kept():
     out = next(l for l in m.render().splitlines() if l.startswith("0:01.0"))
     assert out.endswith("~~{0.40} {sound 0.30 -35} {0.20}~~ {0.90} {sound 0.25 -38} {0.10}") and len(changes) == 1
     assert markfix.strike_mouth_noises(m, pieces, {k: {"jagged_db": 5.0, "low": 0.6, "peak": 0.2}}) == []
+
+
+def test_a_loud_sound_inside_a_sentence_is_never_struck():
+    text = ("# take.wav\n\n<!--\nMark-up.\n-->\n\n"
+            "0:01.0  Claude {0.04} {sound 0.31 +2} {0.04} also flagged seven more. {0.40} {sound 0.30 -20} {0.20}\n\n"
+            "0:04.0  Done.\n")
+    m = markfix.MarkedUp(text, text)
+    pieces = []
+    for tok in m.source:
+        kind = "quiet" if markfix.PAUSE.match(tok) else ("sound" if tok.startswith("{sound") else "word")
+        pieces.append(SimpleNamespace(kind=kind, shown=True, text=tok))
+    noisy = {"jagged_db": 5.0, "low": 0.1, "peak": 0.1}
+    inside = next(i for i, p in enumerate(pieces) if p.text == "{sound 0.31 +2}")
+    between = next(i for i, p in enumerate(pieces) if p.text == "{sound 0.30 -20}")
+    assert markfix.strike_mouth_noises(m, pieces, {inside: noisy}) == []
+    assert len(markfix.strike_mouth_noises(m, pieces, {between: noisy})) == 1   # loud, but after the sentence's end

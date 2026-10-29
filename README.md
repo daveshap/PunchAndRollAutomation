@@ -87,11 +87,11 @@ The order Claude follows for each new recording of David's, run from the folder 
 
 1. Copy his request into `instructions-ledger.md` in his words, with a scope line, and back up anything that will be written over (`C:\Users\daves\audio-backups\<date> <reason>\`).
 2. Add a `[[chapter]]` entry for the recording to the project file (`name`, `title`, `heading`, `recorded`, `audio`, `script`); `batch project.toml --only "<name>"` then writes its transcript.
-3. One helper marks it up by [the brief](docs/marking-up.md), checks it with `markcheck`, and lists the outtakes. Claude reads the mark-up and the helper's report before anything is cut.
+3. One helper marks it up by [the brief](docs/marking-up.md), checks it with `markcheck`, and lists the outtakes. Its task names the recording, its transcript, the script it was read from (a guide only), the mark-up file to write and the outtakes list's path, and points it at the brief and the newest examples. Claude reads the mark-up and the helper's report before anything is cut.
 4. `batch project.toml --only "<name>"` again cuts and masters it into `out`.
 5. `declick MARKUP --raw RAW --finished EDITED --write`, cut again, `clicks` again; repeat until nothing is left in a pause or a sound ([checking](docs/checking.md#clicks-left-in-a-finished-file)).
 6. `readback`, `lost` and `standards` on the finished file.
-7. `said draft`, a decision for every difference by reading, then `said build` writes the finished transcript.
+7. `said draft`, a decision for every difference by reading, then `said build` writes the finished transcript. Words he adds in the middle of a sentence take the `"<words"` form, so they join their sentence instead of standing alone (`said.py`'s notes); read the built transcript through once and fix capitals with `_fixes`.
 8. `outtakes RAW LIST -o <outtakes folder>\<name>` cuts the outtakes, for a film's reel.
 9. `scorecard` on every finished recording, with `--listener --composure`.
 10. The ledger's status line says what was done, with what was run and on which file.

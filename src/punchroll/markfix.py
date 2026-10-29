@@ -23,6 +23,7 @@ from .markup import STAMP, TOKEN
 PAUSE = re.compile(r"\{\s*(\d+(?:\.\d+)?)\s*\}$")
 SOUND = re.compile(r"\{\s*sound\s+(\d+(?:\.\d+)?)\s+([+-]?\d+)\s*\}$")
 CLICK_MAX = 0.08          # a {sound} this short or shorter is a click; a longer one is a breath
+LOUD_DB = -25             # a {sound} louder than this inside a sentence is part of a word: never struck here
 
 
 @dataclass
@@ -196,11 +197,25 @@ def strike_traced(m: MarkedUp, rows: list[dict], pieces) -> list[str]:
     return changes
 
 
+def _inside_sentence(toks: list[Tok], i: int) -> bool:
+    """A word before token i in its line that doesn't end a sentence, and a word after it."""
+    words = lambda r: [t for t in r if not (PAUSE.match(t.text) or SOUND.match(t.text))]
+    before, after = words(toks[:i]), words(toks[i + 1:])
+    return bool(before and after) and not re.search(r"[.?!][\"')\]]*$", before[-1].text)
+
+
+def _loud_in_sentence(toks: list[Tok], i: int) -> bool:
+    """docs/marking-up.md: a loud sound inside a sentence is never struck (23 and 25 Oct 2026). It is usually part
+    of a word the recognizer missed, and striking it cuts into his speech."""
+    m = SOUND.match(toks[i].text)
+    return m is not None and int(m.group(2)) > LOUD_DB and _inside_sentence(toks, i)
+
+
 def strike_mouth_noises(m: MarkedUp, pieces, noises: dict) -> list[str]:
     """Each kept sound that mouth.mouth_noises names a mouth noise, struck with the pauses and clicks touching it.
 
     A fresh pause of their total length goes after them, so the room is heard there instead and the timeline
-    stays as it was."""
+    stays as it was. A loud sound inside a sentence is left alone (`_loud_in_sentence`)."""
     shown, n = {}, 0
     for i, p in enumerate(pieces):
         if getattr(p, "shown", True):
@@ -215,7 +230,7 @@ def strike_mouth_noises(m: MarkedUp, pieces, noises: dict) -> list[str]:
             continue
         row, i = found
         stamp, toks = m.rows[row][1], m.rows[row][2]
-        if toks[i].struck:
+        if toks[i].struck or _loud_in_sentence(toks, i):
             continue
         lo = hi = i
         touch = lambda t: t.source is not None and not t.struck and (PAUSE.match(t.text) or _is_click(t.text))
