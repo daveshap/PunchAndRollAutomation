@@ -12,6 +12,7 @@ You are working as David Shapiro's audio engineer. He records himself reading sc
 2. Two finished examples, each a transcript beside its marked copy, in `C:\Users\daves\OneDrive\Documents\Books\The Great Decoupling\Audio\WAV\markup\`:
    - `anthropic scion - dont pave cow paths.transcript.md` and `anthropic scion - dont pave cow paths.md` (the newest, done with every rule below);
    - `voice clone recording - 15 - midas touch.transcript.md` and `voice clone recording - 15 - midas touch.md`.
+3. The newest finished example, for a recording that becomes a film's voiceover, with his ad-libs and a title read at the start: `the real fourth sector.transcript.md` and `the real fourth sector.md` (25 Oct 2026).
 
 ## What a transcript line looks like
 
@@ -39,7 +40,7 @@ The line starts with its time in the recording. Words are as the speech recogniz
 **Retakes.** Read the whole transcript before marking anything. A retake usually shows as a sentence (or its first words) said again, often after a remark. Strike every earlier attempt, including its trailing pauses and sounds, and keep the last complete one. If the last attempt breaks off and an earlier one is complete, keep the complete one and say so in your report. Where a struck run sits between two kept sentences, the gap left must be natural for that place: keep a pause on one side, or write a fresh pause after the struck run (for example `~~…~~ {0.45}`).
 
 **Clicks and mouth noise.** A `{sound}` of **0.08 s or less** is usually a click. Strike it **together with the pauses on both sides of it**, then write one fresh pause after the struck run, of about their total length (or the length that the gap should have): `{0.18} {sound 0.02 -29} {0.44}` becomes `~~{0.18} {sound 0.02 -29} {0.44}~~ {0.62}`. Striking the click alone leaves its tail behind, because the detector measures a click as about 10 ms but it runs 20 to 30 ms. Inside a run of pauses and sounds, strike the click with the pauses touching it and keep the breath beside it: `{0.87} {sound 0.13 -33} {0.04} {sound 0.04 -31} {0.06} {sound 0.22 -35}` becomes `{0.87} {sound 0.13 -33} ~~{0.04} {sound 0.04 -31} {0.06}~~ {0.10} {sound 0.22 -35}`.
-A sound of **0.10 s or more at about -30 dB or quieter** is usually a breath: keep it. But a swallow, a smack or a run of wet clicks can have the same length and level, so length and level don't settle it: `declick --raw` measures each kept sound with its clicks covered and strikes the ones that are mouth noise, by the same method (see checking.md). A loud sound (above about -25 dB) that sits between takes is usually a bump, a cough or a hand on the desk: strike it with the take. The single clicks left inside a breath or against a word are covered in the master, so there is no need to strike a breath for its click.
+A sound of **0.10 s or more at about -30 dB or quieter** is usually a breath: keep it. But a swallow, a smack or a run of wet clicks can have the same length and level, so length and level don't settle it: `declick --raw` measures each kept sound with its clicks covered and strikes the ones that are mouth noise, by the same method (see checking.md). A loud sound (above about -25 dB) that sits between takes is usually a bump, a cough or a hand on the desk: strike it with the take. A loud sound inside a sentence is never struck (the rule of the recordings of 23 and 25 Oct 2026): it is usually part of a word the recognizer missed, and striking it cuts into his speech. The single clicks left inside a breath or against a word are covered in the master, so there is no need to strike a breath for its click.
 
 **Pauses.** Read every pause, not only the ones beside a cut.
 - Inside a phrase, between words that belong together, a pause is a hesitation: a subject and its verb, a number and its unit, an adjective and its noun, a verb and its object, or the words of one phrase ("every single {0.26} day"). Close it to about `{0.05}`–`{0.08}`.
@@ -51,6 +52,18 @@ A sound of **0.10 s or more at about -30 dB or quieter** is usually a breath: ke
 - Keep breaths in pauses. These recordings train a voice clone, and the result should sound like him, not like a machine.
 
 **The script is only a guide.** It shows where sentences and paragraphs end and what he was reading from. Never mark up to match it: his wording wins. His finished transcript from the earlier edit (named in your task) records what was kept last time, word for word. Your kept text should normally read the same. Where you keep a different take, or keep words it does not have, check again, and if you are sure, say so in your report with the time stamp.
+
+## The outtakes
+
+A recording that becomes a film's voiceover ends the film with an animated reel of its outtakes, his "proof of human effort" (David, 25 Oct 2026: "please put the outtakes at the end and animate them too (proof of human effort)"). While marking up, list every struck take worth hearing: a flub, a retake with a slip, a remark to himself, a laugh, an interruption. Write them as a JSON list, ordered by rating and then time:
+
+```json
+[{ "n": 1, "rating": 3, "profanity": false, "start": 112.40, "end": 118.95, "words": "the Nether... the Netherlands. Okay." }]
+```
+
+`rating` is 3 for a take that would make the reel (funny, human, a clear flub and his reaction), 2 for usable and 1 for filler. `start` and `end` are the raw recording's seconds, from the transcript's timestamps: start a little before the first word and end just after the last sound of the take, his reaction included. `words` is what he says, with "..." where he breaks off. Aim for every take a viewer would enjoy; a reel of the best eight to twelve is the goal.
+
+The main session then cuts the clips with `punchroll outtakes RAW LIST -o "..\Outtakes\<name>"` (raw sound, levelled, faded, with an `outtakes.md` table beside them), which never writes over a file.
 
 ## The checker
 

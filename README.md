@@ -81,6 +81,21 @@ python -m punchroll said changes project.toml --into notes.md   # every sentence
 
 `draft` lists each place where the recognizer's words for the finished file differ from the entry's reference text (`script` with `from`/`to`), and decides the ones that are only spelling. Claude decides the rest by reading: the reader's own wording, or a recognizer mishearing. `build` writes one transcript per recording and one with all of them. `changes` sets each sentence of the text the reader was given beside his finished transcript and lists every one he changed, with his own words marked: the evidence for writing the next script the way he speaks. See [quality analysis](docs/checking.md#finished-transcripts).
 
+## A new recording, start to finish
+
+The order Claude follows for each new recording of David's, run from the folder that holds the project file (on his PC, `Audio\WAV`, with `voice-clone.toml`):
+
+1. Copy his request into `instructions-ledger.md` in his words, with a scope line, and back up anything that will be written over (`C:\Users\daves\audio-backups\<date> <reason>\`).
+2. Add a `[[chapter]]` entry for the recording to the project file (`name`, `title`, `heading`, `recorded`, `audio`, `script`); `batch project.toml --only "<name>"` then writes its transcript.
+3. One helper marks it up by [the brief](docs/marking-up.md), checks it with `markcheck`, and lists the outtakes. Claude reads the mark-up and the helper's report before anything is cut.
+4. `batch project.toml --only "<name>"` again cuts and masters it into `out`.
+5. `declick MARKUP --raw RAW --finished EDITED --write`, cut again, `clicks` again; repeat until nothing is left in a pause or a sound ([checking](docs/checking.md#clicks-left-in-a-finished-file)).
+6. `readback`, `lost` and `standards` on the finished file.
+7. `said draft`, a decision for every difference by reading, then `said build` writes the finished transcript.
+8. `outtakes RAW LIST -o <outtakes folder>\<name>` cuts the outtakes, for a film's reel.
+9. `scorecard` on every finished recording, with `--listener --composure`.
+10. The ledger's status line says what was done, with what was run and on which file.
+
 ## Pickups and alternate recordings
 
 Claude can select passages across recordings with an [assembly plan](examples/assembly.json): source files, time ranges, order, crossfades and optional level matching.
@@ -106,6 +121,7 @@ This writes a float WAV and a source/output map. Use the assembled recording in 
 | `lost RAW EDITED` | Stretches cut from the recording that are never said again: asides, slips, or something lost. |
 | `declick MARKUP [--raw RAW [--finished EDITED]] [--write]` | Clicks struck in the mark-up as docs/checking.md says: a click left in or struck alone; with the recording, the kept sounds that are mouth noise rather than breath; and with the finished file too, each click traced to a kept pause or breath. |
 | `markcheck MARKUP` | The mark-up checked against its transcript, and what is left to judge: short sounds, pauses inside a sentence, long gaps. |
+| `outtakes RAW LIST -o DIR` | The struck takes listed at mark-up, cut from the raw recording as levelled clips with an `outtakes.md` table: the raw material of a film's blooper reel. |
 | `said draft/build P.toml` | The finished transcripts. |
 | `said changes P.toml` | Every sentence the reader changed from the text he was given, with a count per recording. |
 | `picture FILE --at 3:08` | Spectrogram of a passage; `--with RAW --with-at 3:14.5` compares source and result. |
