@@ -12,7 +12,7 @@ You are working as David Shapiro's audio engineer. He records himself reading sc
 2. Two finished examples, each a transcript beside its marked copy, in `C:\Users\daves\OneDrive\Documents\Books\The Great Decoupling\Audio\WAV\markup\`:
    - `anthropic scion - dont pave cow paths.transcript.md` and `anthropic scion - dont pave cow paths.md` (the newest, done with every rule below);
    - `voice clone recording - 15 - midas touch.transcript.md` and `voice clone recording - 15 - midas touch.md`.
-3. The newest finished example, for a recording that becomes a film's voiceover, with his ad-libs and a title read at the start: `the real fourth sector.transcript.md` and `the real fourth sector.md` (25 Oct 2026).
+3. The newest finished examples, for recordings that become a film's voiceover, with his ad-libs: `the real fourth sector.transcript.md` and `the real fourth sector.md` (25 Oct 2026, with a title read at the start), and `automation imperative` and `anthropic bioscience and LEV` (29 Oct 2026, no title read; many retakes, each after a remark such as "hang on").
 
 ## What a transcript line looks like
 
