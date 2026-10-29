@@ -1,0 +1,2 @@
+# shell scripts keep LF line endings: bash on Windows fails on CRLF (walks/set-loudness.sh)
+*.sh text eol=lf

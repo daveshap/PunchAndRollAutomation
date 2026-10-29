@@ -106,6 +106,10 @@ Traps met along the way (14 to 23 Oct 2026, the thread that edited his recording
 - **The microphone's high-pass filter.** Pieces 14 to 16 were recorded with it off: 7 to 8 dB more rumble below 60 Hz in the pauses. They have their own settings (`mic_filter_hz = 100`, a 2nd-order high-pass first in the chain) to match the others. The tone measure starts at the 125 Hz octave and looks at speech only, so measure the low end in the pauses band by band (20 to 60, 60 to 100, 100 to 200 Hz).
 - **On his PC,** a file-protection hook blocks a shell `>` redirect in any command that names his Documents folder (his rule: nothing there is deleted, moved, renamed or overwritten without a copy in `audio-backups`). Run the checks from a script that writes its logs elsewhere.
 
+## Forest walks
+
+His GoPro walks, joined and mastered for YouTube (Adobe Podcast's voice, the EQ and sparkle curve, -14 LUFS, the picture as shot): [walks/README.md](walks/README.md), with the tools and curves beside it.
+
 ## Pickups and alternate recordings
 
 Claude can select passages across recordings with an [assembly plan](examples/assembly.json): source files, time ranges, order, crossfades and optional level matching.
