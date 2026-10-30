@@ -2,6 +2,8 @@
 
 David films walks on a GoPro HERO11 (firmware H26.01 from 19 Oct 2026: 4K 59.94 fps HEVC Main 10, full range, BT.709). The camera splits each recording into chapters of 6:24 (`GX01nnnn.MP4`, `GX02nnnn.MP4`, ...), and with its raw-audio setting it writes a `.WAV` beside each chapter. The finished walk is one MP4 with the picture as shot and his voice mastered.
 
+This folder is strictly the audio side, in David's words (30 Oct 2026): "punchandroll is strictly audio. blurs and video processing is for the animation automation studio." The picture work (thumbnail stills, the grade for footage shot in "Natural", blurring a passer-by) is in AnimationAutomationStudio's `walks/`.
+
 This folder is the version-controlled copy of the tools. The working copy, with the downloads they need, is `C:\Users\daves\voice-isolation` on his PC (work files in its `work\GX00nn\`). After a change there, copy it here and commit.
 
 ## His asks, in his words
@@ -29,7 +31,7 @@ Never touch his source chapters. Outputs go in the walk's folder, named `<GX00nn
    - `check_walk.py sync list.txt <output>`: one constant offset everywhere, joins included (+5.5 ms against the camera's AAC on walk 0044);
    - `matcheq.py show curves/studio_top3.json <output>`: about 3 dB RMS from his studio voice (0040: 3.1; 0044: 2.9).
 
-No grade: since walk 0040 he shoots "Cinematic" and wants the picture as it is. (`grade.py` made a 3D LUT for walk 0038, shot in "Natural".)
+No grade: since walk 0040 he shoots "Cinematic" and wants the picture as it is. (Walk 0038, shot in "Natural", was graded with a 3D LUT before the mux: `grade.py`, now in the studio's `walks/`.)
 
 ## Gotchas
 
@@ -55,10 +57,3 @@ The downloads, in `C:\Users\daves\voice-isolation`: `deepfilter\deep-filter-0.5.
 | 0038 | 19 Oct 2026 | `Videos\GX0038_youtube_mastered.mp4` | the first with Adobe Podcast and `adobe_curve_both.json`; graded (shot "Natural") |
 | 0040 and 0041 | 21 Oct 2026 | `Videos\2026-10-21 - hike\GX0040-0041_youtube_mastered.mp4` | Adobe, the curve, the compressor (new) |
 | 0044 and 0045 | 29 Oct 2026 | `Videos\2026-10-29 hike\GX0044-0045_youtube_mastered.mp4` | Adobe, the curve, the compressor; padded onto the video's timeline; 0045 is the conclusion with Mandy |
-
-## Thumbnail stills
-
-When he asks for stills to build a thumbnail from (walks 0040 and 0044): `thumbnail_stills.py`, in three steps.
-1. `py -3.13 thumbnail_stills.py scan <video> <work dir>`: only the keyframes (one a second on this HEVC) at 384 x 216, as contact sheets of every 5th second (about 3.5 minutes for a 16-minute 4K walk). Look at every sheet and list the moments worth a closer look in a `candidates.json` (`[["m:ss", "why"], ...]`).
-2. `... pick <video> <work dir> candidates.json`: the sharpest frame within 0.6 s of each (centre-weighted Laplacian variance; walking blurs most frames; a "why" with "dog" or "no person" scores the whole frame). Look at the review sheets, then at the faces and hands at 960 px: a label like "hand out" can be a few frames early, and the sharpest frame in a window can be the one after he turned the camera away (on walk 0044 the bridge moment's sharpest frame was the grass), so pick such frames by hand.
-3. `... export <video> <work dir> final.json "<walk folder>/thumbnail stills"`: `final.json` lists picks by "m:ss" or by frame number, in the order to show them (eye contact first, then laughs and gestures, then places and the dog). It writes 4K PNGs named "NN - MmSSs - description", JPEGs (quality 95) in `jpg for uploading\`, and `00 - contact sheet.jpg`, and checks each PNG is the frame that was measured. The camera's full-range BT.709 converts right with zscale or ffmpeg's default scaler (identical RGB). It never writes over a file.
